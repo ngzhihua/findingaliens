@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <mpi.h>
 
 /***********************************************************
   Helper functions 
@@ -96,6 +97,9 @@ int main( int argc, char** argv)
     int dir, iterations, iter;
     int size, patternSize;
     long long before, after;
+    //Added variables
+    int numtasks, rank, dest, source, rc, count, tag=1, rowIndex, sendSize;
+    MPI_Status Stat;
     MATCHLIST*list;
     
     if (argc < 4 ){
@@ -134,22 +138,37 @@ int main( int argc, char** argv)
 
     //Actual work start
     list = newList();
-
+    
+    //Start paralellizing
+    MPI_Init(&argc,&argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &numtaks);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     for (iter = 0; iter < iterations; iter++){
 
 #ifdef DEBUG
         printf("World Iteration.%d\n", iter);
         printSquareMatrix(curW, size+2);
 #endif
-
-        searchPatterns( curW, size, iter, patterns, patternSize, list);
-
+        if (rank == 0){
+            tag = 1;
+            for (dest = 1; dest =< 8; dest++){
+                // -1 due to halo
+                rowIndex = (size/numtasks) * (dest - 1) - 1; 
+                sendSize = (size / 8 + patternSize) * size; //send overlapping world to find pattern across boundaries 
+                rc = MPI_Send(curW[(size/numtasks) * (dest - 1) - 1], (size/8 + patternSize - 1) * size, MPI_CHAR, dest, tag, MPI_COMM_WORLD);
+            }
+        }
+        else{
+            rc = MPI_Recv()
+            searchPatterns( curW, size, iter, patterns, patternSize, list);
+        }
         //Generate next generation
         evolveWorld( curW, nextW, size );
         temp = curW;
         curW = nextW;
         nextW = temp;
     }
+    MPI_Finalize();
 
 
     printList( list );
@@ -381,6 +400,8 @@ void searchPatterns(char** world, int wSize, int iteration,
     int dir;
 
     for (dir = N; dir <= W; dir++){
+        
+        
         searchSinglePattern(world, wSize, iteration, 
                 patterns[dir], pSize, dir, list);
     }
