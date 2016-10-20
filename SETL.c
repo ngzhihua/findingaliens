@@ -64,6 +64,8 @@ void insertEnd(MATCHLIST*, int, int, int, int);
 
 void printList(MATCHLIST*);
 
+//For conversion of match entries into array
+void convertMatchToArray(MATCH* match, int* array)
 
 /***********************************************************
    Search related functions
@@ -98,7 +100,9 @@ int main( int argc, char** argv)
     int size, patternSize;
     long long before, after;
     //Added variables
-    int numtasks, rank, dest, source, rc, count, tag=1, rowIndex, sendSize;
+    int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize;
+    char bufferedWorld = allocateSquareMatrix(size+2, DEAD);
+    MATCHLIST* bufferedList = newList();
     MPI_Status Stat;
     MATCHLIST*list;
     
@@ -149,24 +153,36 @@ int main( int argc, char** argv)
         printf("World Iteration.%d\n", iter);
         printSquareMatrix(curW, size+2);
 #endif
-        if (rank == 0){
-            tag = 1;
-            for (dest = 1; dest =< 8; dest++){
-                // -1 due to halo
-                rowIndex = (size/numtasks) * (dest - 1) - 1; 
-                sendSize = (size / 8 + patternSize) * size; //send overlapping world to find pattern across boundaries 
-                rc = MPI_Send(curW[(size/numtasks) * (dest - 1) - 1], (size/8 + patternSize - 1) * size, MPI_CHAR, dest, tag, MPI_COMM_WORLD);
-            }
-        }
-        else{
-            rc = MPI_Recv()
-            searchPatterns( curW, size, iter, patterns, patternSize, list);
-        }
-        //Generate next generation
-        evolveWorld( curW, nextW, size );
-        temp = curW;
-        curW = nextW;
-        nextW = temp;
+      	if (rank == 0){
+      		if (dest % 8 == 0){
+      			rc = MPI_Recv()
+      			dest++;
+      		}
+      			rc = MPI_Send(curW, (size + 2) * (size + 2), MPI_CHAR, dest % 8, tag, MPI_COMM_WORLD);
+      			evolveWorld(curW, nextW, size);
+      			temp = curW;
+      			curW = nextW;
+      			nextW = temp;
+      			dest ++;	
+      	}
+      	else if (rank == iter%8 ){
+      		rc = MPI_Recv(bufferedWorld, (size + 2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
+      		searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
+      		MATCH* curr = bufferedList-> tail;
+      		int* matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
+      		while (curr->next != null){
+      			convertMatchToArray(curr->next, matchResult);
+      			curr = curr->next;
+      		}
+      		rc = MPI_Send(bufferedList, )
+      	}
+        // searchPatterns( curW, size, iter, patterns, patternSize, list);
+
+        // //Generate next generation
+        // evolveWorld( curW, nextW, size );
+        // temp = curW;
+        // curW = nextW;
+        // nextW = temp;
     }
     MPI_Finalize();
 
@@ -197,7 +213,12 @@ int main( int argc, char** argv)
 /***********************************************************
   Helper functions 
 ***********************************************************/
-
+void convertMatchToArray(MATCH* match, int* array){
+	array[0] = match->iteration;
+	array[1] = match->row;
+	array[2] = match->col;
+	array[3] = match->rotation;
+}
 
 void die(int lineNo)
 {
@@ -400,8 +421,6 @@ void searchPatterns(char** world, int wSize, int iteration,
     int dir;
 
     for (dir = N; dir <= W; dir++){
-        
-        
         searchSinglePattern(world, wSize, iteration, 
                 patterns[dir], pSize, dir, list);
     }
