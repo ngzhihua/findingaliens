@@ -100,9 +100,10 @@ int main( int argc, char** argv)
     int size, patternSize;
     long long before, after;
     //Added variables
-    int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize;
+    int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize, recvSize = 0;
     char bufferedWorld = allocateSquareMatrix(size+2, DEAD);
     MATCHLIST* bufferedList = newList();
+    int * matchResult;
     MPI_Status Stat;
     MATCHLIST*list;
     
@@ -155,7 +156,16 @@ int main( int argc, char** argv)
 #endif
       	if (rank == 0){
       		if (dest % 8 == 0){
-      			rc = MPI_Recv()
+                for (int i = 1; i < 8; i++){
+                    MPI_Probe(i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
+                    MPI_Get_count(&Stat, MPI_INT, &recvSize);
+                    int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
+                    MPI_Recv(recvBuffer, recvSize, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
+                    for (int j = 0; j < recvBuffer.size(); j += 4){
+                        insertEnd(list, recvBuffer[j], recvBuffer[j + 1], recvBuffer[j + 2], recvBuffer[j + 3]);
+                    }
+                    free(recvBuffer);
+                }
       			dest++;
       		}
       			rc = MPI_Send(curW, (size + 2) * (size + 2), MPI_CHAR, dest % 8, tag, MPI_COMM_WORLD);
@@ -168,13 +178,12 @@ int main( int argc, char** argv)
       	else if (rank == iter%8 ){
       		rc = MPI_Recv(bufferedWorld, (size + 2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
       		searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
-      		MATCH* curr = bufferedList-> tail;
-      		int* matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
-      		while (curr->next != null){
-      			convertMatchToArray(curr->next, matchResult);
-      			curr = curr->next;
+      		matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
+            MATCH* curr = bufferedList->tail
+      		for (int i = 0; curr->next != null; curr = curr->next){
+      			convertMatchToArray(curr->next, matchResult, i);
       		}
-      		rc = MPI_Send(bufferedList, )
+      		rc = MPI_Send(matchResult, bufferedList->nItem * 4, MPI_INT, 0, MPI_ANY_TAG, &Stat);
       	}
         // searchPatterns( curW, size, iter, patterns, patternSize, list);
 
@@ -213,11 +222,11 @@ int main( int argc, char** argv)
 /***********************************************************
   Helper functions 
 ***********************************************************/
-void convertMatchToArray(MATCH* match, int* array){
-	array[0] = match->iteration;
-	array[1] = match->row;
-	array[2] = match->col;
-	array[3] = match->rotation;
+void convertMatchToArray(MATCH* match, int* array, int i){
+	array[i*4] = match->iteration;
+	array[i*4] = match->row;
+	array[i*4] = match->col;
+	array[i*4] = match->rotation;
 }
 
 void die(int lineNo)
