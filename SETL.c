@@ -7,7 +7,7 @@
 
 /***********************************************************
   Helper functions 
-***********************************************************/
+ ***********************************************************/
 
 //For exiting on error condition
 void die(int lineNo);
@@ -18,7 +18,7 @@ long long wallClockTime();
 
 /***********************************************************
   Square matrix related functions, used by both world and pattern
-***********************************************************/
+ ***********************************************************/
 
 char** allocateSquareMatrix( int size, char defaultValue );
 
@@ -28,8 +28,8 @@ void printSquareMatrix( char**, int size );
 
 
 /***********************************************************
-   World  related functions
-***********************************************************/
+  World  related functions
+ ***********************************************************/
 
 #define ALIVE 'X' 
 #define DEAD 'O'
@@ -42,18 +42,18 @@ void evolveWorld(char** curWorld, char** nextWorld, int size);
 
 
 /***********************************************************
-   Simple circular linked list for match records
-***********************************************************/
+  Simple circular linked list for match records
+ ***********************************************************/
 
 typedef struct MSTRUCT {
-    int iteration, row, col, rotation;
-    struct MSTRUCT *next;
+	int iteration, row, col, rotation;
+	struct MSTRUCT *next;
 } MATCH;
 
 
 typedef struct {
-    int nItem;
-    MATCH* tail;
+	int nItem;
+	MATCH* tail;
 } MATCHLIST;
 
 MATCHLIST* newList();
@@ -65,11 +65,11 @@ void insertEnd(MATCHLIST*, int, int, int, int);
 void printList(MATCHLIST*);
 
 //For conversion of match entries into array
-void convertMatchToArray(MATCH* match, int* array)
+void convertMatchToArray(MATCH* match, int* array, int i);
 
 /***********************************************************
-   Search related functions
-***********************************************************/
+  Search related functions
+ ***********************************************************/
 
 //Using the compass direction to indicate the rotation of pattern
 #define N 0 //no rotation
@@ -82,146 +82,168 @@ char** readPatternFromFile( char* fname, int* size );
 void rotate90(char** current, char** rotated, int size);
 
 void searchPatterns(char** world, int wSize, int iteration, 
-        char** patterns[4], int pSize, MATCHLIST* list);
+		char** patterns[4], int pSize, MATCHLIST* list);
 
 void searchSinglePattern(char** world, int wSize, int interation,
-        char** pattern, int pSize, int rotation, MATCHLIST* list);
+		char** pattern, int pSize, int rotation, MATCHLIST* list);
 
 /***********************************************************
-   Main function
-***********************************************************/
+  Main function
+ ***********************************************************/
 
 
 int main( int argc, char** argv)
 {
-    char **curW, **nextW, **temp, dummy[20];
-    char **patterns[4];
-    int dir, iterations, iter;
-    int size, patternSize;
-    long long before, after;
-    //Added variables
-    int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize, recvSize = 0;
-    char bufferedWorld = allocateSquareMatrix(size+2, DEAD);
-    MATCHLIST* bufferedList = newList();
-    int * matchResult;
-    MPI_Status Stat;
-    MATCHLIST*list;
-    
-    if (argc < 4 ){
-        fprintf(stderr, 
-            "Usage: %s <world file> <Iterations> <pattern file>\n", argv[0]);
-        exit(1);
-    } 
+	char **curW, **nextW, **temp, dummy[20];
+	char **patterns[4];
+	int dir, iterations, iter;
+	int size, patternSize;
+	long long before, after;
+	//Added variables
+	int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize, recvSize = 0;
+	char** bufferedWorld;
+	MATCHLIST* bufferedList = newList();
+	int * matchResult;
+	MPI_Status Stat;
+	MATCHLIST*list;
+
+	if (argc < 4 ){
+		fprintf(stderr, 
+				"Usage: %s <world file> <Iterations> <pattern file>\n", argv[0]);
+		exit(1);
+	} 
 
 
-    curW = readWorldFromFile(argv[1], &size);
-    nextW = allocateSquareMatrix(size+2, DEAD);
+	curW = readWorldFromFile(argv[1], &size);
+	nextW = allocateSquareMatrix(size+2, DEAD);
 
 
-    printf("World Size = %d\n", size);
+	printf("World Size = %d\n", size);
 
-    iterations = atoi(argv[2]);
-    printf("Iterations = %d\n", iterations);
+	iterations = atoi(argv[2]);
+	printf("Iterations = %d\n", iterations);
 
-    patterns[N] = readPatternFromFile(argv[3], &patternSize);
-    for (dir = E; dir <= W; dir++){
-        patterns[dir] = allocateSquareMatrix(patternSize, DEAD);
-        rotate90(patterns[dir-1], patterns[dir], patternSize);
-    }
-    printf("Pattern size = %d\n", patternSize);
-
-#ifdef DEBUG
-    printSquareMatrix(patterns[N], patternSize);
-    printSquareMatrix(patterns[E], patternSize);
-    printSquareMatrix(patterns[S], patternSize);
-    printSquareMatrix(patterns[W], patternSize);
-#endif
-
- 
-    //Start timer
-    before = wallClockTime();
-
-    //Actual work start
-    list = newList();
-    
-    //Start paralellizing
-    MPI_Init(&argc,&argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &numtaks);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    for (iter = 0; iter < iterations; iter++){
+	patterns[N] = readPatternFromFile(argv[3], &patternSize);
+	for (dir = E; dir <= W; dir++){
+		patterns[dir] = allocateSquareMatrix(patternSize, DEAD);
+		rotate90(patterns[dir-1], patterns[dir], patternSize);
+	}
+	printf("Pattern size = %d\n", patternSize);
 
 #ifdef DEBUG
-        printf("World Iteration.%d\n", iter);
-        printSquareMatrix(curW, size+2);
+	printSquareMatrix(patterns[N], patternSize);
+	printSquareMatrix(patterns[E], patternSize);
+	printSquareMatrix(patterns[S], patternSize);
+	printSquareMatrix(patterns[W], patternSize);
 #endif
-      	if (rank == 0){
-      		if (dest % 8 == 0){
-                for (int i = 1; i < 8; i++){
-                    MPI_Probe(i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
-                    MPI_Get_count(&Stat, MPI_INT, &recvSize);
-                    int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
-                    MPI_Recv(recvBuffer, recvSize, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
-                    for (int j = 0; j < recvBuffer.size(); j += 4){
-                        insertEnd(list, recvBuffer[j], recvBuffer[j + 1], recvBuffer[j + 2], recvBuffer[j + 3]);
-                    }
-                    free(recvBuffer);
-                }
-      			dest++;
-      		}
-      			rc = MPI_Send(curW, (size + 2) * (size + 2), MPI_CHAR, dest % 8, tag, MPI_COMM_WORLD);
-      			evolveWorld(curW, nextW, size);
-      			temp = curW;
-      			curW = nextW;
-      			nextW = temp;
-      			dest ++;	
-      	}
-      	else if (rank == iter%8 ){
-      		rc = MPI_Recv(bufferedWorld, (size + 2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-      		searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
-      		matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
-            MATCH* curr = bufferedList->tail
-      		for (int i = 0; curr->next != null; curr = curr->next){
-      			convertMatchToArray(curr->next, matchResult, i);
-      		}
-      		rc = MPI_Send(matchResult, bufferedList->nItem * 4, MPI_INT, 0, MPI_ANY_TAG, &Stat);
-      	}
-        // searchPatterns( curW, size, iter, patterns, patternSize, list);
-
-        // //Generate next generation
-        // evolveWorld( curW, nextW, size );
-        // temp = curW;
-        // curW = nextW;
-        // nextW = temp;
-    }
-    MPI_Finalize();
 
 
-    printList( list );
+	//Start timer
+	before = wallClockTime();
 
-    //Stop timer
-    after = wallClockTime();
+	//Actual work start
+	list = newList();
 
-    printf("Sequential SETL took %1.2f seconds\n", 
-        ((float)(after - before))/1000000000);
+	//Start paralellizing
+	MPI_Init(&argc,&argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	for (iter = 0; iter < iterations; iter++){
+
+#ifdef DEBUG
+		printf("World Iteration.%d\n", iter);
+		printSquareMatrix(curW, size+2);
+#endif
+		if (rank == 0){
+			if (dest != 0 && dest % 8 == 0){
+				int i;
+				for (i = 1; i < 8; i++){
+					printf("before probing\n");
+					MPI_Probe(i, i, MPI_COMM_WORLD, &Stat);
+					printf("after probing\n");
+					MPI_Get_count(&Stat, MPI_INT, &recvSize);
+					printf("recv size is %d\n", recvSize);
+					int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
+					printf("after malloc\n");
+					MPI_Recv(recvBuffer, recvSize, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
+					printf("after receiving\n");
+					int j;    
+					for ( j = 0; j < sizeof(recvBuffer)/sizeof(int); j += 4){
+						insertEnd(list, recvBuffer[j], recvBuffer[j + 1], recvBuffer[j + 2], recvBuffer[j + 3]);
+					}
+					free(recvBuffer);
+				}
+				dest++;
+				printf("finished 1\n");
+			}
+			else{
+			rc = MPI_Send(&curW[0][0], (size + 2) * (size + 2), MPI_CHAR, dest % 8, rank, MPI_COMM_WORLD);
+			printf("send successful\n");
+			evolveWorld(curW, nextW, size);
+			temp = curW;
+			curW = nextW;
+			nextW = temp;
+			dest ++;	
+			}
+		}
+		else {
+			bufferedWorld = allocateSquareMatrix(size + 2, DEAD);
+			rc = MPI_Recv(&(bufferedWorld[0][0]), (size + 2) * (size + 2), MPI_CHAR, 0, 0, MPI_COMM_WORLD, &Stat);
+			bufferedList = newList();
+			printf("rank %d recv successful\n", rank);
+			printf((bufferedWorld[0][0]));
+			printSquareMatrix(bufferedWorld, 20);
+			searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
+			printf("searching pattern");
+			matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
+			printf("rank %d converting match list to array\n", rank);
+			MATCH* curr = bufferedList->tail;
+				int i;
+				for ( i = 0; i < bufferedList->nItem ; curr = curr->next){
+					convertMatchToArray(curr->next, matchResult, i);
+				}
+			printf("send count = %d", bufferedList->nItem *4);
+			rc = MPI_Send(&matchResult[0], bufferedList->nItem * 4, MPI_INT, 0, rank, MPI_COMM_WORLD);
+		printf("finished others");
+		}
+		//MPI_Barrier(MPI_COMM_WORLD);
+		// searchPatterns( curW, size, iter, patterns, patternSize, list);
+
+		// //Generate next generation
+		// evolveWorld( curW, nextW, size );
+		// temp = curW;
+		// curW = nextW;
+		// nextW = temp;
+	}
+	MPI_Finalize();
+
+	printf("ended");
+	printList( list );
+
+	//Stop timer
+	after = wallClockTime();
+
+	printf("Sequential SETL took %1.2f seconds\n", 
+			((float)(after - before))/1000000000);
 
 
-    //Clean up
-    deleteList( list );
+	//Clean up
+	deleteList( list );
 
-    freeSquareMatrix( curW );
-    freeSquareMatrix( nextW );
+	freeSquareMatrix( curW );
+	freeSquareMatrix( nextW );
 
-    freeSquareMatrix( patterns[0] );
-    freeSquareMatrix( patterns[1] );
-    freeSquareMatrix( patterns[2] );
-    freeSquareMatrix( patterns[3] );
+	freeSquareMatrix( patterns[0] );
+	freeSquareMatrix( patterns[1] );
+	freeSquareMatrix( patterns[2] );
+	freeSquareMatrix( patterns[3] );
 
-    return 0;
+	return 0;
 }
 
 /***********************************************************
   Helper functions 
-***********************************************************/
+ ***********************************************************/
 void convertMatchToArray(MATCH* match, int* array, int i){
 	array[i*4] = match->iteration;
 	array[i*4] = match->row;
@@ -231,320 +253,320 @@ void convertMatchToArray(MATCH* match, int* array, int i){
 
 void die(int lineNo)
 {
-    fprintf(stderr, "Error at line %d. Exiting\n", lineNo);
-    exit(1);
+	fprintf(stderr, "Error at line %d. Exiting\n", lineNo);
+	exit(1);
 }
 
 long long wallClockTime( )
 {
 #ifdef __linux__
-    struct timespec tp;
-    clock_gettime(CLOCK_REALTIME, &tp);
-    return (long long)(tp.tv_nsec + (long long)tp.tv_sec * 1000000000ll);
+	struct timespec tp;
+	clock_gettime(CLOCK_REALTIME, &tp);
+	return (long long)(tp.tv_nsec + (long long)tp.tv_sec * 1000000000ll);
 #else
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (long long)(tv.tv_usec * 1000 + (long long)tv.tv_sec * 1000000000ll);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return (long long)(tv.tv_usec * 1000 + (long long)tv.tv_sec * 1000000000ll);
 #endif
 }
 
 /***********************************************************
   Square matrix related functions, used by both world and pattern
-***********************************************************/
+ ***********************************************************/
 
 char** allocateSquareMatrix( int size, char defaultValue )
 {
 
-    char* contiguous;
-    char** matrix;
-    int i;
+	char* contiguous;
+	char** matrix;
+	int i;
 
-    //Using a least compiler version dependent approach here
-    //C99, C11 have a nicer syntax.    
-    contiguous = (char*) malloc(sizeof(char) * size * size);
-    if (contiguous == NULL) 
-        die(__LINE__);
+	//Using a least compiler version dependent approach here
+	//C99, C11 have a nicer syntax.    
+	contiguous = (char*) malloc(sizeof(char) * size * size);
+	if (contiguous == NULL) 
+		die(__LINE__);
 
 
-    memset(contiguous, defaultValue, size * size );
+	memset(contiguous, defaultValue, size * size );
 
-    //Point the row array to the right place
-    matrix = (char**) malloc(sizeof(char*) * size );
-    if (matrix == NULL) 
-        die(__LINE__);
+	//Point the row array to the right place
+	matrix = (char**) malloc(sizeof(char*) * size );
+	if (matrix == NULL) 
+		die(__LINE__);
 
-    matrix[0] = contiguous;
-    for (i = 1; i < size; i++){
-        matrix[i] = &contiguous[i*size];
-    }
+	matrix[0] = contiguous;
+	for (i = 1; i < size; i++){
+		matrix[i] = &contiguous[i*size];
+	}
 
-    return matrix;
+	return matrix;
 }
 
 void printSquareMatrix( char** matrix, int size )
 {
-    int i,j;
-    
-    for (i = 0; i < size; i++){
-        for (j = 0; j < size; j++){
-            printf("%c", matrix[i][j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
+	int i,j;
+
+	for (i = 0; i < size; i++){
+		for (j = 0; j < size; j++){
+			printf("%c", matrix[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
 }
 
 void freeSquareMatrix( char** matrix )
 {
-    if (matrix == NULL) return;
+	if (matrix == NULL) return;
 
-    free( matrix[0] );
+	free( matrix[0] );
 }
 
 /***********************************************************
-   World  related functions
-***********************************************************/
+  World  related functions
+ ***********************************************************/
 
 char** readWorldFromFile( char* fname, int* sizePtr )
 {
-    FILE* inf;
-    
-    char temp, **world;
-    int i, j;
-    int size;
+	FILE* inf;
 
-    inf = fopen(fname,"r");
-    if (inf == NULL)
-        die(__LINE__);
+	char temp, **world;
+	int i, j;
+	int size;
+
+	inf = fopen(fname,"r");
+	if (inf == NULL)
+		die(__LINE__);
 
 
-    fscanf(inf, "%d", &size);
-    fscanf(inf, "%c", &temp);
-    
-    //Using the "halo" approach
-    // allocated additional top + bottom rows
-    // and leftmost and rightmost rows to form a boundary
-    // to simplify computation of cell along edges
-    world = allocateSquareMatrix( size + 2, DEAD );
+	fscanf(inf, "%d", &size);
+	fscanf(inf, "%c", &temp);
 
-    for (i = 1; i <= size; i++){
-        for (j = 1; j <= size; j++){
-            fscanf(inf, "%c", &world[i][j]);
-        }
-        fscanf(inf, "%c", &temp);
-    }
+	//Using the "halo" approach
+	// allocated additional top + bottom rows
+	// and leftmost and rightmost rows to form a boundary
+	// to simplify computation of cell along edges
+	world = allocateSquareMatrix( size + 2, DEAD );
 
-    *sizePtr = size;    //return size
-    return world;
-    
+	for (i = 1; i <= size; i++){
+		for (j = 1; j <= size; j++){
+			fscanf(inf, "%c", &world[i][j]);
+		}
+		fscanf(inf, "%c", &temp);
+	}
+
+	*sizePtr = size;    //return size
+	return world;
+
 }
 
 int countNeighbours(char** world, int row, int col)
-//Assume 1 <= row, col <= size, no check 
+	//Assume 1 <= row, col <= size, no check 
 {
-    int i, j, count;
+	int i, j, count;
 
-    count = 0;
-    for(i = row-1; i <= row+1; i++){
-        for(j = col-1; j <= col+1; j++){
-            count += (world[i][j] == ALIVE );
-        }
-    }
+	count = 0;
+	for(i = row-1; i <= row+1; i++){
+		for(j = col-1; j <= col+1; j++){
+			count += (world[i][j] == ALIVE );
+		}
+	}
 
-    //discount the center
-    count -= (world[row][col] == ALIVE);
+	//discount the center
+	count -= (world[row][col] == ALIVE);
 
-    return count;
+	return count;
 
 }
 
 void evolveWorld(char** curWorld, char** nextWorld, int size)
 {
-    int i, j, liveNeighbours;
+	int i, j, liveNeighbours;
 
-    for (i = 1; i <= size; i++){
-        for (j = 1; j <= size; j++){
-            liveNeighbours = countNeighbours(curWorld, i, j);
-            nextWorld[i][j] = DEAD;
+	for (i = 1; i <= size; i++){
+		for (j = 1; j <= size; j++){
+			liveNeighbours = countNeighbours(curWorld, i, j);
+			nextWorld[i][j] = DEAD;
 
-            //Only take care of alive cases
-            if (curWorld[i][j] == ALIVE) {
+			//Only take care of alive cases
+			if (curWorld[i][j] == ALIVE) {
 
-                if (liveNeighbours == 2 || liveNeighbours == 3)
-                    nextWorld[i][j] = ALIVE;
+				if (liveNeighbours == 2 || liveNeighbours == 3)
+					nextWorld[i][j] = ALIVE;
 
-            } else if (liveNeighbours == 3)
-                    nextWorld[i][j] = ALIVE;
-        } 
-    }
+			} else if (liveNeighbours == 3)
+				nextWorld[i][j] = ALIVE;
+		} 
+	}
 }
 
 /***********************************************************
-   Search related functions
-***********************************************************/
+  Search related functions
+ ***********************************************************/
 
 char** readPatternFromFile( char* fname, int* sizePtr )
 {
-    FILE* inf;
-    
-    char temp, **pattern;
-    int i, j;
-    int size;
+	FILE* inf;
 
-    inf = fopen(fname,"r");
-    if (inf == NULL)
-        die(__LINE__);
+	char temp, **pattern;
+	int i, j;
+	int size;
+
+	inf = fopen(fname,"r");
+	if (inf == NULL)
+		die(__LINE__);
 
 
-    fscanf(inf, "%d", &size);
-    fscanf(inf, "%c", &temp);
-    
-    pattern = allocateSquareMatrix( size, DEAD );
+	fscanf(inf, "%d", &size);
+	fscanf(inf, "%c", &temp);
 
-    for (i = 0; i < size; i++){
-        for (j = 0; j < size; j++){
-            fscanf(inf, "%c", &pattern[i][j]);
-        }
-        fscanf(inf, "%c", &temp);
-    }
-    
-    *sizePtr = size;    //return size
-    return pattern;
+	pattern = allocateSquareMatrix( size, DEAD );
+
+	for (i = 0; i < size; i++){
+		for (j = 0; j < size; j++){
+			fscanf(inf, "%c", &pattern[i][j]);
+		}
+		fscanf(inf, "%c", &temp);
+	}
+
+	*sizePtr = size;    //return size
+	return pattern;
 }
 
 
 void rotate90(char** current, char** rotated, int size)
 {
-    int i, j;
+	int i, j;
 
-    for (i = 0; i < size; i++){
-        for (j = 0; j < size; j++){
-            rotated[j][size-i-1] = current[i][j];
-        }
-    }
+	for (i = 0; i < size; i++){
+		for (j = 0; j < size; j++){
+			rotated[j][size-i-1] = current[i][j];
+		}
+	}
 }
 
 void searchPatterns(char** world, int wSize, int iteration, 
-        char** patterns[4], int pSize, MATCHLIST* list)
+		char** patterns[4], int pSize, MATCHLIST* list)
 {
-    int dir;
+	int dir;
 
-    for (dir = N; dir <= W; dir++){
-        searchSinglePattern(world, wSize, iteration, 
-                patterns[dir], pSize, dir, list);
-    }
+	for (dir = N; dir <= W; dir++){
+		searchSinglePattern(world, wSize, iteration, 
+				patterns[dir], pSize, dir, list);
+	}
 
 }
 
 void searchSinglePattern(char** world, int wSize, int iteration,
-        char** pattern, int pSize, int rotation, MATCHLIST* list)
+		char** pattern, int pSize, int rotation, MATCHLIST* list)
 {
-    int wRow, wCol, pRow, pCol, match;
+	int wRow, wCol, pRow, pCol, match;
 
 
-    for (wRow = 1; wRow <= (wSize-pSize+1); wRow++){
-        for (wCol = 1; wCol <= (wSize-pSize+1); wCol++){
-            match = 1;
+	for (wRow = 1; wRow <= (wSize-pSize+1); wRow++){
+		for (wCol = 1; wCol <= (wSize-pSize+1); wCol++){
+			match = 1;
 #ifdef DEBUGMORE
-            printf("S:(%d, %d)\n", wRow-1, wCol-1);
+			printf("S:(%d, %d)\n", wRow-1, wCol-1);
 #endif
-            for (pRow = 0; match && pRow < pSize; pRow++){
-                for (pCol = 0; match && pCol < pSize; pCol++){
-                    if(world[wRow+pRow][wCol+pCol] != pattern[pRow][pCol]){
+			for (pRow = 0; match && pRow < pSize; pRow++){
+				for (pCol = 0; match && pCol < pSize; pCol++){
+					if(world[wRow+pRow][wCol+pCol] != pattern[pRow][pCol]){
 #ifdef DEBUGMORE
-                        printf("\tF:(%d, %d) %c != %c\n", pRow, pCol,
-                            world[wRow+pRow][wCol+pCol], pattern[pRow][pCol]);
+						printf("\tF:(%d, %d) %c != %c\n", pRow, pCol,
+								world[wRow+pRow][wCol+pCol], pattern[pRow][pCol]);
 #endif
-                        match = 0;    
-                    }
-                }
-            }
-            if (match){
-                insertEnd(list, iteration, wRow-1, wCol-1, rotation);
+						match = 0;    
+					}
+				}
+			}
+			if (match){
+				insertEnd(list, iteration, wRow-1, wCol-1, rotation);
 #ifdef DEBUGMORE
-printf("*** Row = %d, Col = %d\n", wRow-1, wCol-1);
+				printf("*** Row = %d, Col = %d\n", wRow-1, wCol-1);
 #endif
-            }
-        }
-    }
+			}
+		}
+	}
 }
 
 /***********************************************************
-   Simple circular linked list for match records
-***********************************************************/
+  Simple circular linked list for match records
+ ***********************************************************/
 
 MATCHLIST* newList()
 {
-    MATCHLIST* list;
+	MATCHLIST* list;
 
-    list = (MATCHLIST*) malloc(sizeof(MATCHLIST));
-    if (list == NULL)
-        die(__LINE__);
+	list = (MATCHLIST*) malloc(sizeof(MATCHLIST));
+	if (list == NULL)
+		die(__LINE__);
 
-    list->nItem = 0;
-    list->tail = NULL;
+	list->nItem = 0;
+	list->tail = NULL;
 
-    return list;
+	return list;
 }
 
 void deleteList( MATCHLIST* list)
 {
-    MATCH *cur, *next;
-    int i;
-    //delete items first
+	MATCH *cur, *next;
+	int i;
+	//delete items first
 
-    if (list->nItem != 0 ){
-        cur = list->tail->next;
-        next = cur->next;
-        for( i = 0; i < list->nItem; i++, cur = next, next = next->next ) {
-            free(cur); 
-        }
+	if (list->nItem != 0 ){
+		cur = list->tail->next;
+		next = cur->next;
+		for( i = 0; i < list->nItem; i++, cur = next, next = next->next ) {
+			free(cur); 
+		}
 
-    }
-    free( list );
+	}
+	free( list );
 }
 
 void insertEnd(MATCHLIST* list, 
-        int iteration, int row, int col, int rotation)
+		int iteration, int row, int col, int rotation)
 {
-    MATCH* newItem;
+	MATCH* newItem;
 
-    newItem = (MATCH*) malloc(sizeof(MATCH));
-    if (newItem == NULL)
-        die(__LINE__);
+	newItem = (MATCH*) malloc(sizeof(MATCH));
+	if (newItem == NULL)
+		die(__LINE__);
 
-    newItem->iteration = iteration;
-    newItem->row = row;
-    newItem->col = col;
-    newItem->rotation = rotation;
+	newItem->iteration = iteration;
+	newItem->row = row;
+	newItem->col = col;
+	newItem->rotation = rotation;
 
-    if (list->nItem == 0){
-        newItem->next = newItem;
-        list->tail = newItem;
-    } else {
-        newItem->next = list->tail->next;
-        list->tail->next = newItem;
-        list->tail = newItem;
-    }
+	if (list->nItem == 0){
+		newItem->next = newItem;
+		list->tail = newItem;
+	} else {
+		newItem->next = list->tail->next;
+		list->tail->next = newItem;
+		list->tail = newItem;
+	}
 
-    (list->nItem)++;
+	(list->nItem)++;
 
 }
 
 void printList(MATCHLIST* list)
 {
-    int i;
-    MATCH* cur;
+	int i;
+	MATCH* cur;
 
-    printf("List size = %d\n", list->nItem);    
+	printf("List size = %d\n", list->nItem);    
 
 
-    if (list->nItem == 0) return;
+	if (list->nItem == 0) return;
 
-    cur = list->tail->next;
-    for( i = 0; i < list->nItem; i++, cur=cur->next){
-        printf("%d:%d:%d:%d\n", 
-                cur->iteration, cur->row, cur->col, cur->rotation);
-    }
+	cur = list->tail->next;
+	for( i = 0; i < list->nItem; i++, cur=cur->next){
+		printf("%d:%d:%d:%d\n", 
+				cur->iteration, cur->row, cur->col, cur->rotation);
+	}
 }
 
