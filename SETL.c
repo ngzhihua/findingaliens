@@ -175,27 +175,22 @@ int main( int argc, char** argv)
 		printSquareMatrix(curW, size+2);
 #endif
 		if (rank == 0){
-			if (dest % 8 == 0){
+			if (dest % numtasks == 0 ){
 				int i;
-				for (i = 1; i < 8; i++){
-					printf("before probing\n");
+				for (i = 1; i < (numtasks); i++){
 					MPI_Probe(i, tag, MPI_COMM_WORLD, &Stat);
-					printf("after probing\n");
 					MPI_Get_count(&Stat, MPI_INT, &recvSize);
-					printf("recv size is %d\n", recvSize);
 					int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
-					printf("after malloc\n");
-					MPI_Recv(recvBuffer, recvSize, MPI_INT, i, Stat.MPI_TAG, MPI_COMM_WORLD, &Stat);
-					printf("after receiving\n");
+					MPI_Recv(recvBuffer, recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &Stat);
 					int j;    
-					for ( j = 0; j < sizeof(recvBuffer)/sizeof(int); j += 4){
+					for ( j = 0; j < recvSize; j += 4){
 						insertEnd(list, recvBuffer[j], recvBuffer[j + 1], recvBuffer[j + 2], recvBuffer[j + 3]);
+						printf("%d %d %d %d\n", recvBuffer[j], recvBuffer[j+1], recvBuffer[j+2], recvBuffer[j+3]);
 					}
 					free(recvBuffer);
 				}
 				tag++;
 				dest++;
-				printf("finished 1\n");
 			}
 			rc = MPI_Send(&(curW[0][0]), (size + 2) * (size + 2), MPI_CHAR, dest % 8, tag, MPI_COMM_WORLD);
 			printf("send successful to %d\n", dest);
@@ -205,31 +200,35 @@ int main( int argc, char** argv)
 			nextW = temp;
 			dest ++;
 		}
-		else if((rank-1) == (iter%8)){
+		else if((rank-1) == (iter%(numtasks -1))){
 			bufferedWorld = allocateEmptySquareMatrix(size + 2);
 			//if (rank == 1)
 			//printSquareMatrix(bufferedWorld, size + 2);
-			printf("local tag is %d\n", tag);
+			//printf("local tag is %d\n", tag);
 			rc = MPI_Recv(&(bufferedWorld[0][0]), (size + 2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD, &Stat);
 			bufferedList = newList();
-			printf("rank %d recv successful %d characters of data and tag is %d\n", rank, Stat.count,Stat.MPI_TAG);
-			printf("ERROR: %d\n", Stat.MPI_ERROR);
-			printf("rank %d pattern size is %d\n", rank, patternSize);
-			printf("searching pattern for rank %d\n", rank);
+			//printf("rank %d recv successful %d characters of data and tag is %d\n", rank, Stat.count,Stat.MPI_TAG);
+			//printf("ERROR: %d\n", Stat.MPI_ERROR);
+			//printf("rank %d pattern size is %d\n", rank, patternSize);
+			//printf("searching pattern for rank %d\n", rank);
 			searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
-			printf("Number of items in bufferedList : %d\n", bufferedList->nItem);
+			//printf("Number of items in bufferedList : %d\n", bufferedList->nItem);
 			matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
-			printf("matched results\n");
-			printf("rank %d converting match list to array\n", rank);
-			MATCH* curr = bufferedList->tail;
+			//printf("matched results\n");
+			//printf("rank %d converting match list to array\n", rank);
+			printList(bufferedList);
+			MATCH* curr = bufferedList->tail->next;
 			int i;
-			for ( i = 0; i < bufferedList->nItem ; curr = curr->next){
-				convertMatchToArray(curr->next, matchResult, i);
+			for ( i = 0; i < bufferedList->nItem; curr = curr->next){
+				convertMatchToArray(curr, matchResult, i);
 				i++;
 			}
-			printf("send count = %d with tag %d\n", bufferedList->nItem *4, tag);
+			printf("match result item:  %d\n", bufferedList->nItem *4, tag);
+			for (i = 0; i < bufferedList->nItem * 4; i++){
+				printf("%d ", matchResult[i]);
+			}
 			rc = MPI_Send(&(matchResult[0]), bufferedList->nItem * 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-			printf("finished others");
+			deleteList(bufferedList);
 			tag++;
 		}
 		//MPI_Barrier(MPI_COMM_WORLD);
@@ -241,20 +240,38 @@ int main( int argc, char** argv)
 		// curW = nextW;
 		// nextW = temp;
 	}
+	if (rank == 0){
+		printf("rank 0's dest is %d",dest);
+		int i;
+		for (i = 1; i < (dest) % (numtasks); i++){
+			MPI_Probe(i, tag, MPI_COMM_WORLD, &Stat);
+			MPI_Get_count(&Stat, MPI_INT, &recvSize);
+			int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
+			MPI_Recv(recvBuffer, recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &Stat);
+			int j;    
+			for ( j = 0; j < recvSize; j += 4){
+				insertEnd(list, recvBuffer[j], recvBuffer[j + 1], recvBuffer[j + 2], recvBuffer[j + 3]);
+				printf("%d %d %d %d\n", recvBuffer[j], recvBuffer[j+1], recvBuffer[j+2], recvBuffer[j+3]);
+			}
+			free(recvBuffer);
+		}
+
+
+	}	
 	MPI_Barrier(MPI_COMM_WORLD);
-
-	if (rank == 0){	
-		printList( list );
-
-		//Stop timer
+	if (rank == 0){
+		printList(list);
+		MPI_Finalize();	
 		after = wallClockTime();
 
 		printf("Sequential SETL took %1.2f seconds\n", 
 				((float)(after - before))/1000000000);
+
 	}
-	MPI_Finalize();
 
+	//printList( list );
 
+	//Stop timer
 
 	//Clean up
 	deleteList( list );
@@ -274,10 +291,10 @@ int main( int argc, char** argv)
   Helper functions 
  ***********************************************************/
 void convertMatchToArray(MATCH* match, int* array, int i){
-	array[i*4] = match->iteration;
-	array[i*4] = match->row;
-	array[i*4] = match->col;
-	array[i*4] = match->rotation;
+	array[i*4+1] = match->iteration;
+	array[i*4+2] = match->row;
+	array[i*4+3] = match->col;
+	array[i*4+4] = match->rotation;
 }
 
 void die(int lineNo)
