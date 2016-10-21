@@ -19,11 +19,11 @@ long long wallClockTime();
   Square matrix related functions, used by both world and pattern
 ***********************************************************/
 
-char** allocateSquareMatrix( size_t size, char defaultValue );
+char** allocateSquareMatrix( int size, char defaultValue );
 
 void freeSquareMatrix( char** );
 
-void printSquareMatrix( char**, size_t size );
+void printSquareMatrix( char**, int size );
 
 
 /***********************************************************
@@ -33,11 +33,11 @@ void printSquareMatrix( char**, size_t size );
 #define ALIVE 'X' 
 #define DEAD 'O'
 
-char** readWorldFromFile( char* fname, size_t* size );
+char** readWorldFromFile( char* fname, int* size );
 
 int countNeighbours(char** world, int row, int col);
 
-void evolveWorld(char** curWorld, char** nextWorld, size_t size);
+void evolveWorld(char** curWorld, char** nextWorld, int size);
 
 
 /***********************************************************
@@ -74,7 +74,7 @@ void printList(MATCHLIST*);
 #define S 2 //180 degree clockwise
 #define W 3 //90 degree anti-clockwise
 
-char** readPatternFromFile( char* fname, size_t* size );
+char** readPatternFromFile( char* fname, int* size );
 
 void rotate90(char** current, char** rotated, int size);
 
@@ -94,7 +94,7 @@ int main( int argc, char** argv)
     char **curW, **nextW, **temp, dummy[20];
     char **patterns[4];
     int dir, iterations, iter;
-    size_t size, patternSize;
+    int size, patternSize;
     long long before, after;
     MATCHLIST*list;
     
@@ -203,7 +203,7 @@ long long wallClockTime( )
   Square matrix related functions, used by both world and pattern
 ***********************************************************/
 
-char** allocateSquareMatrix( size_t size, char defaultValue )
+char** allocateSquareMatrix( int size, char defaultValue )
 {
 
     char* contiguous;
@@ -232,7 +232,7 @@ char** allocateSquareMatrix( size_t size, char defaultValue )
     return matrix;
 }
 
-void printSquareMatrix( char** matrix, size_t size )
+void printSquareMatrix( char** matrix, int size )
 {
     int i,j;
     
@@ -256,13 +256,13 @@ void freeSquareMatrix( char** matrix )
    World  related functions
 ***********************************************************/
 
-char** readWorldFromFile( char* fname, size_t* sizePtr )
+char** readWorldFromFile( char* fname, int* sizePtr )
 {
     FILE* inf;
     
     char temp, **world;
     int i, j;
-    size_t size;
+    int size;
 
     inf = fopen(fname,"r");
     if (inf == NULL)
@@ -309,7 +309,7 @@ int countNeighbours(char** world, int row, int col)
 
 }
 
-void evolveWorld(char** curWorld, char** nextWorld, size_t size)
+void evolveWorld(char** curWorld, char** nextWorld, int size)
 {
     int i, j, liveNeighbours;
 
@@ -334,13 +334,13 @@ void evolveWorld(char** curWorld, char** nextWorld, size_t size)
    Search related functions
 ***********************************************************/
 
-char** readPatternFromFile( char* fname, size_t* sizePtr )
+char** readPatternFromFile( char* fname, int* sizePtr )
 {
     FILE* inf;
     
     char temp, **pattern;
     int i, j;
-    size_t size;
+    int size;
 
     inf = fopen(fname,"r");
     if (inf == NULL)
