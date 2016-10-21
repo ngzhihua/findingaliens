@@ -19,6 +19,7 @@ long long wallClockTime();
 /***********************************************************
   Square matrix related functions, used by both world and pattern
  ***********************************************************/
+char** allocateEmptySquareMatrix(int size);
 
 char** allocateSquareMatrix( int size, char defaultValue );
 
@@ -101,7 +102,7 @@ int main( int argc, char** argv)
 	long long before, after;
 	//Added variables
 	int numtasks, rank, dest = 1, source, rc, count, tag=1, rowIndex, sendSize, recvSize = 0;
-	char** bufferedWorld;
+	char **bufferedWorld;
 	MATCHLIST* bufferedList = newList();
 	int * matchResult;
 	MPI_Status Stat;
@@ -148,6 +149,25 @@ int main( int argc, char** argv)
 	MPI_Init(&argc,&argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+
+
+	//if (rank == 0){
+	//	int i;
+	//	for (i = 1; i < 8; i++){
+	//		MPI_Send(patterns, patternSize * patternSize * 4, MPI_CHAR, i, 0, MPI_COMM_WORLD);
+	//			printf("send pattern successful\n");
+	//		}	
+	//}
+	//else{
+	//	MPI_Recv(patterns, patternSize * patternSize * 4, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &Stat);	
+	//	printf("recv pattern successful\n");
+	//	printSquareMatrix(patterns[N], patternSize);
+	//	printSquareMatrix(patterns[E], patternSize);
+	//	printSquareMatrix(patterns[S], patternSize);
+	//	printSquareMatrix(patterns[W], patternSize);
+	//}
+
 	for (iter = 0; iter < iterations; iter++){
 
 #ifdef DEBUG
@@ -155,17 +175,17 @@ int main( int argc, char** argv)
 		printSquareMatrix(curW, size+2);
 #endif
 		if (rank == 0){
-			if (dest != 0 && dest % 8 == 0){
+			if (dest % 8 == 0){
 				int i;
 				for (i = 1; i < 8; i++){
 					printf("before probing\n");
-					MPI_Probe(i, i, MPI_COMM_WORLD, &Stat);
+					MPI_Probe(i, tag, MPI_COMM_WORLD, &Stat);
 					printf("after probing\n");
 					MPI_Get_count(&Stat, MPI_INT, &recvSize);
 					printf("recv size is %d\n", recvSize);
 					int* recvBuffer = (int *)malloc(sizeof(int) * recvSize);
 					printf("after malloc\n");
-					MPI_Recv(recvBuffer, recvSize, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &Stat);
+					MPI_Recv(recvBuffer, recvSize, MPI_INT, i, Stat.MPI_TAG, MPI_COMM_WORLD, &Stat);
 					printf("after receiving\n");
 					int j;    
 					for ( j = 0; j < sizeof(recvBuffer)/sizeof(int); j += 4){
@@ -173,38 +193,44 @@ int main( int argc, char** argv)
 					}
 					free(recvBuffer);
 				}
+				tag++;
 				dest++;
 				printf("finished 1\n");
 			}
-			else{
-			rc = MPI_Send(&curW[0][0], (size + 2) * (size + 2), MPI_CHAR, dest % 8, rank, MPI_COMM_WORLD);
-			printf("send successful\n");
+			rc = MPI_Send(&(curW[0][0]), (size + 2) * (size + 2), MPI_CHAR, dest % 8, tag, MPI_COMM_WORLD);
+			printf("send successful to %d\n", dest);
 			evolveWorld(curW, nextW, size);
 			temp = curW;
 			curW = nextW;
 			nextW = temp;
-			dest ++;	
-			}
+			dest ++;
 		}
-		else {
-			bufferedWorld = allocateSquareMatrix(size + 2, DEAD);
-			rc = MPI_Recv(&(bufferedWorld[0][0]), (size + 2) * (size + 2), MPI_CHAR, 0, 0, MPI_COMM_WORLD, &Stat);
+		else if((rank-1) == (iter%8)){
+			bufferedWorld = allocateEmptySquareMatrix(size + 2);
+			//if (rank == 1)
+			//printSquareMatrix(bufferedWorld, size + 2);
+			printf("local tag is %d\n", tag);
+			rc = MPI_Recv(&(bufferedWorld[0][0]), (size + 2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD, &Stat);
 			bufferedList = newList();
-			printf("rank %d recv successful\n", rank);
-			printf((bufferedWorld[0][0]));
-			printSquareMatrix(bufferedWorld, 20);
+			printf("rank %d recv successful %d characters of data and tag is %d\n", rank, Stat.count,Stat.MPI_TAG);
+			printf("ERROR: %d\n", Stat.MPI_ERROR);
+			printf("rank %d pattern size is %d\n", rank, patternSize);
+			printf("searching pattern for rank %d\n", rank);
 			searchPatterns(bufferedWorld, size, iter, patterns, patternSize, bufferedList);
-			printf("searching pattern");
+			printf("Number of items in bufferedList : %d\n", bufferedList->nItem);
 			matchResult = (int *) malloc(bufferedList->nItem * 4 * sizeof(int));
+			printf("matched results\n");
 			printf("rank %d converting match list to array\n", rank);
 			MATCH* curr = bufferedList->tail;
-				int i;
-				for ( i = 0; i < bufferedList->nItem ; curr = curr->next){
-					convertMatchToArray(curr->next, matchResult, i);
-				}
-			printf("send count = %d", bufferedList->nItem *4);
-			rc = MPI_Send(&matchResult[0], bufferedList->nItem * 4, MPI_INT, 0, rank, MPI_COMM_WORLD);
-		printf("finished others");
+			int i;
+			for ( i = 0; i < bufferedList->nItem ; curr = curr->next){
+				convertMatchToArray(curr->next, matchResult, i);
+				i++;
+			}
+			printf("send count = %d with tag %d\n", bufferedList->nItem *4, tag);
+			rc = MPI_Send(&(matchResult[0]), bufferedList->nItem * 4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			printf("finished others");
+			tag++;
 		}
 		//MPI_Barrier(MPI_COMM_WORLD);
 		// searchPatterns( curW, size, iter, patterns, patternSize, list);
@@ -215,16 +241,19 @@ int main( int argc, char** argv)
 		// curW = nextW;
 		// nextW = temp;
 	}
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	if (rank == 0){	
+		printList( list );
+
+		//Stop timer
+		after = wallClockTime();
+
+		printf("Sequential SETL took %1.2f seconds\n", 
+				((float)(after - before))/1000000000);
+	}
 	MPI_Finalize();
 
-	printf("ended");
-	printList( list );
-
-	//Stop timer
-	after = wallClockTime();
-
-	printf("Sequential SETL took %1.2f seconds\n", 
-			((float)(after - before))/1000000000);
 
 
 	//Clean up
@@ -273,6 +302,31 @@ long long wallClockTime( )
 /***********************************************************
   Square matrix related functions, used by both world and pattern
  ***********************************************************/
+char ** allocateEmptySquareMatrix(int size){
+
+	char* contiguous;
+	char** matrix;
+	int i;
+
+	//Using a least compiler version dependent approach here
+	//C99, C11 have a nicer syntax.    
+	contiguous = (char*) malloc(sizeof(char) * size * size);
+	if (contiguous == NULL) 
+		die(__LINE__);
+
+	//Point the row array to the right place
+	matrix = (char**) malloc(sizeof(char*) * size );
+	if (matrix == NULL) 
+		die(__LINE__);
+
+	matrix[0] = contiguous;
+	for (i = 1; i < size; i++){
+		matrix[i] = &contiguous[i*size];
+	}
+
+	return matrix;
+}
+
 
 char** allocateSquareMatrix( int size, char defaultValue )
 {
@@ -461,7 +515,7 @@ void searchPatterns(char** world, int wSize, int iteration,
 void searchSinglePattern(char** world, int wSize, int iteration,
 		char** pattern, int pSize, int rotation, MATCHLIST* list)
 {
-	int wRow, wCol, pRow, pCol, match;
+	int wRow, wCol, pRow, pCol, match;	
 
 
 	for (wRow = 1; wRow <= (wSize-pSize+1); wRow++){
