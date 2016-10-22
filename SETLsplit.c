@@ -150,7 +150,7 @@ int main( int argc, char** argv)
     //Start timer
 	before = wallClockTime();
 
-	init(argc, argv, numTask, rank);
+	init(&argc, &argv, numTask, rank);
 	MPI_Status status;
 
 	numSlaveProcess = numTask - 1;
@@ -288,7 +288,7 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	tag++;
 }
 
-void init(int argc, char** argv, int* numTask, int* rank){
+void init(int* argc, char** argv, int* numTask, int* rank){
 	MPI_Init(argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &numTask);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
