@@ -275,13 +275,13 @@ void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Staus *
 }
 
 void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize){
-	int i, numRows = wSize / numSlaveprocess + pSize, rowNum = 0;
+	int i, numRows = wSize / numSlaveProcess + pSize, rowNum = 0;
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
 		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
 		printf("send successful to %d\n", i);
-		rowNum += numRows;
+		rowNum += wSize/numSlaveProcess;
 	}
 
 	// Handle last case of odd number of rows seperately
