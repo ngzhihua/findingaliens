@@ -10,13 +10,13 @@
 ***********************************************************/
 
 // For all other slave p to receive work
-void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Status *status)
+void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Status *status);
 
 // For p0 to distribute data
-void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize)
+void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize);
 
 // To Init parallelization
-void init(int* argc, char** argv, int* numTask, int* rank)
+void init(int* argc, char** argv, int* numTask, int* rank);
 
 //For exiting on error condition
 void die(int lineNo);
@@ -29,10 +29,10 @@ long long wallClockTime();
   Square matrix related functions, used by both world and pattern
 ***********************************************************/
 // Receives list and appends to main list
-void gatherWork(int *recvBuf, int *tag, MPI_Status status, int *numTask, MATCHLIST* list)
+void gatherWork(int *recvBuf, int *tag, MPI_Status status, int *numTask, MATCHLIST* list);
 
 // Convert searchPatterns result into array
-void convertMatchListToArr(MATCHLIST* list, int* arr)
+void convertMatchListToArr(MATCHLIST* list, int* arr);
 
 // For generation of buffer usage
 char ** allocateEmptySquareMatrix(int size);
