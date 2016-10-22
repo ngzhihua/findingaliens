@@ -6,14 +6,37 @@
 #include <mpi.h>
 
 /***********************************************************
+   Simple circular linked list for match records
+***********************************************************/
+
+typedef struct MSTRUCT {
+	int iteration, row, col, rotation;
+	struct MSTRUCT *next;
+} MATCH;
+
+
+typedef struct {
+	int nItem;
+	MATCH* tail;
+} MATCHLIST;
+
+MATCHLIST* newList();
+
+void deleteList( MATCHLIST*);
+
+void insertEnd(MATCHLIST*, int, int, int, int);
+
+void printList(MATCHLIST*);
+
+/***********************************************************
   Helper functions 
 ***********************************************************/
 
 // For all other slave p to receive work
-void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Status *status);
+void receiveWork(char **recvBuf, int numRows, int wSize, int tag, MPI_Status *status);
 
 // For p0 to distribute data
-void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize);
+void distributeWork(char **, int numSlaveProcess, int tag, int wSize, int pSize);
 
 // To Init parallelization
 void init(int* argc, char** argv, int* numTask, int* rank);
@@ -29,7 +52,7 @@ long long wallClockTime();
   Square matrix related functions, used by both world and pattern
 ***********************************************************/
 // Receives list and appends to main list
-void gatherWork(int *recvBuf, int *tag, MPI_Status status, int *numTask, MATCHLIST* list);
+void gatherWork(int *, int tag, MPI_Status status, int numTask, MATCHLIST* list);
 
 // Convert searchPatterns result into array
 void convertMatchListToArr(MATCHLIST* list, int* arr);
@@ -56,33 +79,6 @@ char** readWorldFromFile( char* fname, int* size );
 int countNeighbours(char** world, int row, int col);
 
 void evolveWorld(char** curWorld, char** nextWorld, int size);
-
-
-/***********************************************************
-   Simple circular linked list for match records
-***********************************************************/
-
-typedef struct MSTRUCT {
-	int iteration, row, col, rotation;
-	struct MSTRUCT *next;
-} MATCH;
-
-
-typedef struct {
-	int nItem;
-	MATCH* tail;
-} MATCHLIST;
-
-MATCHLIST* newList();
-
-void deleteList( MATCHLIST*);
-
-void insertEnd(MATCHLIST*, int, int, int, int);
-
-void printList(MATCHLIST*);
-
-//For conversion of match entries into array
-void convertMatchToArray(MATCH* match, int* array, int i);
 
 /***********************************************************
    Search related functions
@@ -166,19 +162,19 @@ int main( int argc, char** argv)
 		printSquareMatrix(curW, size+2);
 #endif
 		if (rank == 0){
-			distributeWork(curW, numSlaveProcess, tag);
-			gatherWork(recvBuf, tag, status, numTask, list);
+			distributeWork(curW, numSlaveProcess, tag, size, pSize);
+			gatherWork(resultBuf, tag, &status, numTask, list);
         	//Generate next generation
-			evolveWorld( curW, nextW, size, wSize, pSize);
+			evolveWorld( curW, nextW, size);
 			temp = curW;
 			curW = nextW;
 			nextW = temp;
 		}
 		else if (rank != numSlaveProcess){
         	//recv
-			row = wSize / numSlaveprocess + pSize;
+			row = wSize / numSlaveProcess + pSize;
 			recvBuf = allocateEmptySquareMatrix(row * (size + 2));
-			receiveWork(recvBuf, row, size, tag, status);
+			receiveWork(recvBuf, row, size, tag, &status);
 			list = newList();
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
         	//Send back
@@ -193,7 +189,7 @@ int main( int argc, char** argv)
         	//recv
 			row = (wSize % numSlaveprocess) + 2;
 			recvBuf = allocateEmptySquareMatrix(row * (size + 2));
-			receiveWork(recvBuf, row, size, tag, status);
+			receiveWork(recvBuf, row, size, tag, &status);
 			list = newList();
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
         	//Send back
@@ -238,7 +234,7 @@ int main( int argc, char** argv)
   Helper functions 
 ***********************************************************/
 // Receives list and appends to main list
-void gatherWork(int *recvBuf, int *tag, MPI_Status status, int *numTask, MATCHLIST* list){
+void gatherWork(int *recvBuf, int tag, MPI_Status *status, int numTask, MATCHLIST* list){
 	int i, j;
 	int recvSize;
 
@@ -260,7 +256,7 @@ void convertMatchListToArr(MATCHLIST* list, int* arr){
 	int i;
 	MATCH* curr = list->tail->next;
 
-	arr = (int *) malloc(list->nitem * 4 * sizeof(int));
+	arr = (int *) malloc(list->nItem * 4 * sizeof(int));
 
 	for ( i= 0 ; i < list->nItem; i++){
 		arr[i*4] = curr->iteration;
@@ -271,11 +267,11 @@ void convertMatchListToArr(MATCHLIST* list, int* arr){
 	}
 }
 
-void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Staus *status){
+void receiveWork(char **recvBuf, int numRows, int wSize, int tag, MPI_Status *status){
 	MPI_Recv(recvBuf, numRows * (wSize +2), MPI_CHAR, tag, MPI_COMM_WORLD, &status);
 }
 
-void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize){
+void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = wSize / numSlaveProcess + pSize, rowNum = 0;
 
 	// Distribute to processes 1 to n-1
@@ -288,12 +284,12 @@ void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, i
 	// Handle last case of odd number of rows seperately
 	numRows = (wSize % numSlaveProcess) + 2;
 	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
-	printf("send successful to %d\n", numSlaveProcess)
+	printf("send successful to %d\n", numSlaveProcess);
 	tag++;
 }
 
-void init(int* argc, char** argv, int* numTask, int* rank){
-	MPI_Init(&argc, &argv);
+void init(int argc, char** argv, int* numTask, int* rank){
+	MPI_Init(argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &numTask);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 }
