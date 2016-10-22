@@ -3,13 +3,14 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <mpi.h>
 
 /***********************************************************
   Helper functions 
 ***********************************************************/
 
 // For all other slave p to receive work
-void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Staus *status)
+void receiveWork(char **recvBuf, int* numRows, int* wSize, int* tag, MPI_Status *status)
 
 // For p0 to distribute data
 void distributeWork(char ** currW, int* numSlaveProcess, int* tag, int* wSize, int * pSize)
