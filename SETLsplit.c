@@ -7,8 +7,8 @@
 #include <math.h>
 
 /***********************************************************
-   Simple circular linked list for match records
-***********************************************************/
+  Simple circular linked list for match records
+ ***********************************************************/
 
 typedef struct MSTRUCT {
 	int iteration, row, col, rotation;
@@ -31,7 +31,7 @@ void printList(MATCHLIST*);
 
 /***********************************************************
   Helper functions 
-***********************************************************/
+ ***********************************************************/
 
 // For all other slave p to receive work
 void receiveWork(char **recvBuf, int numRows, int wSize, int tag);
@@ -51,12 +51,12 @@ long long wallClockTime();
 
 /***********************************************************
   Square matrix related functions, used by both world and pattern
-***********************************************************/
+ ***********************************************************/
 // Receives list and appends to main list
 void gatherWork(int *, int tag, int numTask, MATCHLIST* list);
 
 // Convert searchPatterns result into array
-void convertMatchListToArr(MATCHLIST* list, int* arr);
+int* convertMatchListToArr(MATCHLIST* list, int rowOffset);
 
 // For generation of buffer usage
 char ** allocateEmptySquareMatrix(int row, int size);
@@ -69,8 +69,8 @@ void printSquareMatrix( char**, int size );
 
 
 /***********************************************************
-   World  related functions
-***********************************************************/
+  World  related functions
+ ***********************************************************/
 
 #define ALIVE 'X' 
 #define DEAD 'O'
@@ -82,8 +82,8 @@ int countNeighbours(char** world, int row, int col);
 void evolveWorld(char** curWorld, char** nextWorld, int size);
 
 /***********************************************************
-   Search related functions
-***********************************************************/
+  Search related functions
+ ***********************************************************/
 
 //Using the compass direction to indicate the rotation of pattern
 #define N 0 //no rotation
@@ -96,14 +96,14 @@ char** readPatternFromFile( char* fname, int* size );
 void rotate90(char** current, char** rotated, int size);
 
 void searchPatterns(char** world, int wSize, int iteration, 
-	char** patterns[4], int pSize, MATCHLIST* list, int row);
+		char** patterns[4], int pSize, MATCHLIST* list, int row);
 
 void searchSinglePattern(char** world, int wSize, int interation,
-	char** pattern, int pSize, int rotation, MATCHLIST* list, int row);
+		char** pattern, int pSize, int rotation, MATCHLIST* list, int row);
 
 /***********************************************************
-   Main function
-***********************************************************/
+  Main function
+ ***********************************************************/
 
 
 int main( int argc, char** argv)
@@ -111,7 +111,7 @@ int main( int argc, char** argv)
 	char **curW, **nextW, **temp, **recvBuf;
 	//char dummy[20];
 	char **patterns[4];
-	int dir, iterations, iter, rank, numTask, numSlaveProcess, row, tag = 1;
+	int dir, iterations, iter, rank, numTask, numSlaveProcess, row, tag = 1, rowOffset;
 	int size, patternSize;
 	long long before, after;
 	MATCHLIST*list;
@@ -120,7 +120,7 @@ int main( int argc, char** argv)
 
 	if (argc < 4 ){
 		fprintf(stderr, 
-			"Usage: %s <world file> <Iterations> <pattern file>\n", argv[0]);
+				"Usage: %s <world file> <Iterations> <pattern file>\n", argv[0]);
 		exit(1);
 	} 
 
@@ -140,6 +140,8 @@ int main( int argc, char** argv)
 		rotate90(patterns[dir-1], patterns[dir], patternSize);
 	}
 	printf("Pattern size = %d\n", patternSize);
+	
+	list = newList();
 
 #ifdef DEBUG
 	printSquareMatrix(patterns[N], patternSize);
@@ -149,15 +151,15 @@ int main( int argc, char** argv)
 #endif
 
 
-    //Start timer
+	//Start timer
 	before = wallClockTime();
 
-//	init(&argc, argv, *numTask, *rank);
+	//	init(&argc, argv, *numTask, *rank);
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &numTask);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	numSlaveProcess = numTask - 1;
+	numSlaveProcess = numTask - 1;	
 
 	for (iter = 0; iter < iterations; iter++){
 
@@ -168,89 +170,114 @@ int main( int argc, char** argv)
 		if (rank == 0){
 			distributeWork(curW, numSlaveProcess, tag, size, patternSize);
 			gatherWork(resultBuf, tag, numTask, list);
-        	//Generate next generation
+			//Generate next generation
 			evolveWorld( curW, nextW, size);
 			temp = curW;
 			curW = nextW;
 			nextW = temp;
 		}
-		else if (rank != numSlaveProcess){
-        	//recv
+		else if (rank > 0 && rank < numSlaveProcess){
+			//recv
 			row = ceil(size / (float)numSlaveProcess) + patternSize + 1;
-			printf("rank != numSlave process row :%d\n", row);
+			//printf("rank != numSlave %d process row :%d\n", rank, row);
 			recvBuf = allocateEmptySquareMatrix(row, (size + 2));
 			receiveWork(recvBuf, row, size, tag);
 			list = newList();
-			printf("process %d started searching\n", rank);
+			//printf("process %d started searching\n", rank);
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
- 	       		printf("process %d finished searching\n", rank);
+			//printf("process %d finished searching\n", rank);
 			//Send back
-			convertMatchListToArr(list, listArr);
-			int i;
-			printf("buffered items= %d\n", list->nItem * 4);
+			rowOffset = (rank-1) * ceil(size / (float)numSlaveProcess);
+			listArr = convertMatchListToArr(list, rowOffset);
+			//int i;
+			//printf("buffered items= %d\n", list->nItem);
 			//for (i = 0; i < list->nItem * 4; i++){
 			//	printf("%d ", listArr[i]);
 			//}
-			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-			//deleteList(list);
-			//free(listArr);
+			//printf("process %d returned from converting: %d\n", rank, list->nItem);
+			//if (list->nItem > 0){
+				//printf("listArr[0] = %d\n", listArr[0]);
+				MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			//}
+			if (list != NULL){
+			deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+			free(listArr);
+			}
 
 		}
-		else{
-        	//Last process handling is special due to odd sizes
-        	//recv
+		else if (rank == numSlaveProcess){
+			//Last process handling is special due to odd sizes
+			//recv
 			if (size%numSlaveProcess == 0){
 				row = size / numSlaveProcess + 2; 
 			}
 			else{
 				row = size - (numSlaveProcess - 1) * ceil(size/(float)numSlaveProcess) + 2;
 			}
-			printf("rank == numSlave process row : %d\n", row);
+			//printf("rank == numSlave %d process row : %d\n", rank, row);
 			recvBuf = allocateEmptySquareMatrix(row, (size + 2));
 			receiveWork(recvBuf, row, size, tag);
 			list = newList();
+			//printf("process %d started searching\n", rank);
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
-        	//Send back
-			convertMatchListToArr(list, listArr);
+			//printf("process %d finished searching\n", rank);
+			//Send back
+			rowOffset = (rank-1) * ceil(size / (float)numSlaveProcess);
+			listArr = convertMatchListToArr(list, rowOffset);
+			//printf("process %d returned from converting: %d\n", rank, list->nItem);
+			//if (list->nItem > 0){
 			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-
-			//deleteList(list);
-			//free(listArr);
+			//	printf("process %d sent to process 0", rank);
+			//}
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		tag++;
-
+		MPI_Barrier(MPI_COMM_WORLD);
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
-	if (rank == 0){
-		printList( list );
-		MPI_Finalize();
-	}
+	
 
-    //Stop timer
-	after = wallClockTime();
-
-	printf("Sequential SETL took %1.2f seconds\n", 
-		((float)(after - before))/1000000000);
-
-
-    //Clean up
-	deleteList( list );
-
-	freeSquareMatrix( curW );
-	freeSquareMatrix( nextW );
 
 	freeSquareMatrix( patterns[0] );
 	freeSquareMatrix( patterns[1] );
 	freeSquareMatrix( patterns[2] );
 	freeSquareMatrix( patterns[3] );
+	
+	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Finalize();	
+
+	if (rank == 0){		
+		
+	freeSquareMatrix( curW );
+	freeSquareMatrix( nextW );
+		printList( list );
+		
+	deleteList( list );
+	}
+	
+	//MPI_Barrier(MPI_COMM_WORLD);
+	//MPI_Finalize();
+
+	after = wallClockTime();
+
+	printf("Sequential SETL took %1.2f seconds\n", 
+			((float)(after - before))/1000000000);
+	//Clean up
 
 	return 0;
+
 }
 
 /***********************************************************
   Helper functions 
-***********************************************************/
+ ***********************************************************/
 // Receives list and appends to main list
 void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 	int i, j;
@@ -261,39 +288,50 @@ void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 	for (i = 1; i < numTask; i++){
 		MPI_Probe(i, tag, MPI_COMM_WORLD, &status);
 		MPI_Get_count(&status, MPI_INT, &recvSize);
-		recvBuf = (int *)malloc(sizeof(int) * recvSize);
-		MPI_Recv(recvBuf, recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &status);
-
-		for (j = 0; j < recvSize; j++){
-			insertEnd(list, recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4 +2], recvBuf[j*4+3]);
+		if (recvSize > 0){
+			recvBuf = (int *)malloc(sizeof(int) * recvSize);
+			MPI_Recv(&(recvBuf[0]), recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &status);
+			//printf("result received from %d with status %d and count %d and source %d and tag %d\n", i, status.MPI_ERROR, recvSize, status.MPI_SOURCE, status.MPI_TAG);
+			
+			for (j = 0; j < recvSize/4 ; j++){
+				//printf("receiveBuffer: %d %d %d %d\n", recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4+2], recvBuf[j*4+3]);
+				insertEnd(list, recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4 +2], recvBuf[j*4+3]);
+				//printf("after insertEnd\n");
+			}
+			//printf("result from %d processed\n", i);
+			//free(recvBuf);
 		}
-		//free(recvBuf);
 	}
 }
 
-void convertMatchListToArr(MATCHLIST* list, int* arr){
+int* convertMatchListToArr(MATCHLIST* list, int rowOffset){
 	int i;
-	MATCH* curr = list->tail->next;
-
-	arr = (int *) malloc(list->nItem * 4 * sizeof(int));
-
-	for ( i= 0 ; i < list->nItem; i++){
-		arr[i*4] = curr->iteration;
-		arr[i*4+1] = curr-> row;
-		arr[i*4+2] = curr-> col;
-		arr[i*4+3] = curr-> rotation;
-		curr = curr->next;
+	int *arr;
+	MATCH* curr;
+	if (list->nItem > 0){
+		curr = list->tail->next;
 	}
+	arr = malloc(list->nItem * 4 * sizeof(int));
+	//printList(list);
+	for ( i= 0 ; i < list->nItem; i++){
+		(arr[i*4]) = curr->iteration;
+		(arr[i*4+1]) = curr-> row + rowOffset;
+		(arr[i*4+2]) = curr-> col;
+		(arr[i*4+3]) = curr-> rotation;
+		curr = curr->next;
+		//printf("%d %d %d %d\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
+	}
+	return arr;
 }
 
 void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 	MPI_Status status;
 
 	MPI_Recv(&(recvBuf[0][0]), numRows * (wSize +2), MPI_CHAR, 0, tag, MPI_COMM_WORLD, &status);
-	
+
 	//	printf("count is %d. error is %d.\n", status.count, status.MPI_ERROR);
-	
-	int i, j;
+
+	//int i, j;
 
 	//for (i = 0; i < numRows; i++){
 	//	for (j = 0; j < wSize + 2; j++){
@@ -306,13 +344,11 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = ceil(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
-	
-	printSquareMatrix(currW, wSize);
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
 		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
-		printf("send successful to %d: numRows = %d\n", i, numRows * (wSize +2));
+		//printf("send successful to %d: numRows = %d\n", i, numRows * (wSize +2));
 		rowNum += ceil(wSize/(float)numSlaveProcess);
 	}
 
@@ -322,9 +358,10 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	}
 	else{
 		numRows = wSize - ((numSlaveProcess - 1) * (ceil(wSize/(float)numSlaveProcess))) + 2 ;
+		//printf("number of rows = %d\n", numRows);
 	}
 	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
-	printf("send successful to %d\n", numSlaveProcess);
+	//printf("send successful to %d\n", numSlaveProcess);
 	tag++;
 }
 
@@ -352,7 +389,7 @@ long long wallClockTime( )
 
 /***********************************************************
   Square matrix related functions, used by both world and pattern
-***********************************************************/
+ ***********************************************************/
 char ** allocateEmptySquareMatrix(int rows,int size){
 
 	char* contiguous;
@@ -385,8 +422,8 @@ char** allocateSquareMatrix( int size, char defaultValue )
 	char** matrix;
 	int i;
 
-    //Using a least compiler version dependent approach here
-    //C99, C11 have a nicer syntax.    
+	//Using a least compiler version dependent approach here
+	//C99, C11 have a nicer syntax.    
 	contiguous = (char*) malloc(sizeof(char) * size * size);
 	if (contiguous == NULL) 
 		die(__LINE__);
@@ -394,7 +431,7 @@ char** allocateSquareMatrix( int size, char defaultValue )
 
 	memset(contiguous, defaultValue, size * size );
 
-    //Point the row array to the right place
+	//Point the row array to the right place
 	matrix = (char**) malloc(sizeof(char*) * size );
 	if (matrix == NULL) 
 		die(__LINE__);
@@ -428,8 +465,8 @@ void freeSquareMatrix( char** matrix )
 }
 
 /***********************************************************
-   World  related functions
-***********************************************************/
+  World  related functions
+ ***********************************************************/
 
 char** readWorldFromFile( char* fname, int* sizePtr )
 {
@@ -447,10 +484,10 @@ char** readWorldFromFile( char* fname, int* sizePtr )
 	fscanf(inf, "%d", &size);
 	fscanf(inf, "%c", &temp);
 
-    //Using the "halo" approach
-    // allocated additional top + bottom rows
-    // and leftmost and rightmost rows to form a boundary
-    // to simplify computation of cell along edges
+	//Using the "halo" approach
+	// allocated additional top + bottom rows
+	// and leftmost and rightmost rows to form a boundary
+	// to simplify computation of cell along edges
 	world = allocateSquareMatrix( size + 2, DEAD );
 
 	for (i = 1; i <= size; i++){
@@ -460,13 +497,13 @@ char** readWorldFromFile( char* fname, int* sizePtr )
 		fscanf(inf, "%c", &temp);
 	}
 
-    *sizePtr = size;    //return size
-    return world;
-    
+	*sizePtr = size;    //return size
+	return world;
+
 }
 
 int countNeighbours(char** world, int row, int col)
-//Assume 1 <= row, col <= size, no check 
+	//Assume 1 <= row, col <= size, no check 
 {
 	int i, j, count;
 
@@ -477,7 +514,7 @@ int countNeighbours(char** world, int row, int col)
 		}
 	}
 
-    //discount the center
+	//discount the center
 	count -= (world[row][col] == ALIVE);
 
 	return count;
@@ -493,21 +530,21 @@ void evolveWorld(char** curWorld, char** nextWorld, int size)
 			liveNeighbours = countNeighbours(curWorld, i, j);
 			nextWorld[i][j] = DEAD;
 
-            //Only take care of alive cases
+			//Only take care of alive cases
 			if (curWorld[i][j] == ALIVE) {
 
 				if (liveNeighbours == 2 || liveNeighbours == 3)
 					nextWorld[i][j] = ALIVE;
 
 			} else if (liveNeighbours == 3)
-			nextWorld[i][j] = ALIVE;
+				nextWorld[i][j] = ALIVE;
 		} 
 	}
 }
 
 /***********************************************************
-   Search related functions
-***********************************************************/
+  Search related functions
+ ***********************************************************/
 
 char** readPatternFromFile( char* fname, int* sizePtr )
 {
@@ -534,8 +571,8 @@ char** readPatternFromFile( char* fname, int* sizePtr )
 		fscanf(inf, "%c", &temp);
 	}
 
-    *sizePtr = size;    //return size
-    return pattern;
+	*sizePtr = size;    //return size
+	return pattern;
 }
 
 
@@ -551,19 +588,19 @@ void rotate90(char** current, char** rotated, int size)
 }
 
 void searchPatterns(char** world, int wSize, int iteration, 
-	char** patterns[4], int pSize, MATCHLIST* list, int row)
+		char** patterns[4], int pSize, MATCHLIST* list, int row)
 {
 	int dir;
-	
+
 	for (dir = N; dir <= W; dir++){
 		searchSinglePattern(world, wSize, iteration, 
-			patterns[dir], pSize, dir, list, row);
+				patterns[dir], pSize, dir, list, row);
 	}
 
 }
 
 void searchSinglePattern(char** world, int wSize, int iteration,
-	char** pattern, int pSize, int rotation, MATCHLIST* list, int row)
+		char** pattern, int pSize, int rotation, MATCHLIST* list, int row)
 {
 	int wRow, wCol, pRow, pCol, match;
 
@@ -578,7 +615,7 @@ void searchSinglePattern(char** world, int wSize, int iteration,
 					if(world[wRow+pRow][wCol+pCol] != pattern[pRow][pCol]){
 #ifdef DEBUGMORE
 						printf("\tF:(%d, %d) %c != %c\n", pRow, pCol,
-							world[wRow+pRow][wCol+pCol], pattern[pRow][pCol]);
+								world[wRow+pRow][wCol+pCol], pattern[pRow][pCol]);
 #endif
 						match = 0;    
 					}
@@ -595,8 +632,8 @@ void searchSinglePattern(char** world, int wSize, int iteration,
 }
 
 /***********************************************************
-   Simple circular linked list for match records
-***********************************************************/
+  Simple circular linked list for match records
+ ***********************************************************/
 
 MATCHLIST* newList()
 {
@@ -616,7 +653,7 @@ void deleteList( MATCHLIST* list)
 {
 	MATCH *cur, *next;
 	int i;
-    //delete items first
+	//delete items first
 
 	if (list->nItem != 0 ){
 		cur = list->tail->next;
@@ -630,7 +667,7 @@ void deleteList( MATCHLIST* list)
 }
 
 void insertEnd(MATCHLIST* list, 
-	int iteration, int row, int col, int rotation)
+		int iteration, int row, int col, int rotation)
 {
 	MATCH* newItem;
 
@@ -669,7 +706,7 @@ void printList(MATCHLIST* list)
 	cur = list->tail->next;
 	for( i = 0; i < list->nItem; i++, cur=cur->next){
 		printf("%d:%d:%d:%d\n", 
-			cur->iteration, cur->row, cur->col, cur->rotation);
+				cur->iteration, cur->row, cur->col, cur->rotation);
 	}
 }
 
