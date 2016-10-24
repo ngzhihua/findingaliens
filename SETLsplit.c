@@ -19,6 +19,7 @@ typedef struct MSTRUCT {
 typedef struct {
 	int nItem;
 	MATCH* tail;
+	MATCH* head;
 } MATCHLIST;
 
 MATCHLIST* newList();
@@ -280,9 +281,18 @@ int main( int argc, char** argv)
  ***********************************************************/
 // Receives list and appends to main list
 void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
-	int i, j;
-	int recvSize;
+	int i, j, recvSize, arrIndex;
 	MPI_Status status;
+	MATCHLIST *lists[4];
+	MATCH *temp;
+	//MATCHLIST *list0 = newList();
+	//MATCHLIST *list1 = newList();
+	//MATCHLIST *list2 = newList();
+	//MATCHLIST *list3 = newList();
+	//MATCH* curr;
+	for (i=0; i < 4; i++){
+		lists[i] = newList();
+	}	
 
 	//Every process doesn't know how many results they are going to receive
 	for (i = 1; i < numTask; i++){
@@ -293,15 +303,48 @@ void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 			MPI_Recv(&(recvBuf[0]), recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &status);
 			//printf("result received from %d with status %d and count %d and source %d and tag %d\n", i, status.MPI_ERROR, recvSize, status.MPI_SOURCE, status.MPI_TAG);
 			
-			for (j = 0; j < recvSize/4 ; j++){
-				//printf("receiveBuffer: %d %d %d %d\n", recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4+2], recvBuf[j*4+3]);
-				insertEnd(list, recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4 +2], recvBuf[j*4+3]);
+			for (j = 0; j < recvSize ; j += 4){
+				//printf("receiveBuffer: %d:%d:%d:%d\n", recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
+				//if ( recvBuf[j+3] == 0){
+				arrIndex= recvBuf[j+3];
+				insertEnd(lists[arrIndex], recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
+				//}	
+				//else if ( recvBuf[j+3] == 1){
+				//	insertEnd(list1, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
+				//}	
+				//else if ( recvBuf[j+3] == 2){
+				//	insertEnd(list2, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
+				//}
+				//else if ( recvBuf[j+3] == 3){
+				//	insertEnd(list3, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
+				//}
+				//insertEnd(list, recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4 +2], recvBuf[j*4+3]);
 				//printf("after insertEnd\n");
 			}
 			//printf("result from %d processed\n", i);
-			//free(recvBuf);
+			//free(recvBuf)
 		}
 	}
+
+	//list->tail = list0->tail;
+	for (i = 0; i < 4; i++){
+		if (lists[i]->nItem > 0){
+			if (list->nItem > 0){
+				temp = list->tail->next;
+				list->tail->next = lists[i]->tail->next;
+				lists[i]->tail->next = temp;
+				list->tail = lists[i]->tail;
+			}
+			else{
+				list->tail = lists[i]->tail;
+			}
+		
+		}
+		
+		list->nItem += lists[i]->nItem;
+	}
+	
+	//list->nItem += list0->nItem + list1->nItem + list2->nItem + list3->nItem;
 }
 
 int* convertMatchListToArr(MATCHLIST* list, int rowOffset){
@@ -309,7 +352,7 @@ int* convertMatchListToArr(MATCHLIST* list, int rowOffset){
 	int *arr;
 	MATCH* curr;
 	if (list->nItem > 0){
-		curr = list->tail->next;
+		curr = list->tail;
 	}
 	arr = malloc(list->nItem * 4 * sizeof(int));
 	//printList(list);
@@ -604,7 +647,7 @@ void searchSinglePattern(char** world, int wSize, int iteration,
 {
 	int wRow, wCol, pRow, pCol, match;
 
-	for (wRow = 1; wRow <= (row-pSize); wRow++){
+	for (wRow = 1; wRow < (row-pSize); wRow++){
 		for (wCol = 1; wCol <= (wSize-pSize+1); wCol++){
 			match = 1;
 #ifdef DEBUGMORE
@@ -645,6 +688,7 @@ MATCHLIST* newList()
 
 	list->nItem = 0;
 	list->tail = NULL;
+	list->head = NULL;	
 
 	return list;
 }
@@ -683,6 +727,7 @@ void insertEnd(MATCHLIST* list,
 	if (list->nItem == 0){
 		newItem->next = newItem;
 		list->tail = newItem;
+		list->head = newItem;
 	} else {
 		newItem->next = list->tail->next;
 		list->tail->next = newItem;
