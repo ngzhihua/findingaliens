@@ -33,6 +33,12 @@ void printList(MATCHLIST*);
 /***********************************************************
   Helper functions 
  ***********************************************************/
+//to collect evolved world from sub processes
+void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize);
+
+// To distribute world for evolution
+void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize);
+
 // To distribute matrix size to all processes
 int distributeSize(int size, int numSlaveProcess, int rank);
 
@@ -85,7 +91,7 @@ char** readWorldFromFile( char* fname, int* size );
 
 int countNeighbours(char** world, int row, int col);
 
-void evolveWorld(char** curWorld, char** nextWorld, int size);
+void evolveWorld(char** curWorld, char** nextWorld, int row, int size);
 
 /***********************************************************
   Search related functions
@@ -119,7 +125,7 @@ int main( int argc, char** argv)
 	char **patterns[4];
 	int dir, iterations, iter, rank, numTask, numSlaveProcess, row, tag = 6, rowOffset;
 	int size, patternSize;
-	long long before, after, beforePrint;
+	long long before, after, beforePrint, beforeWork, afterWork;
 	MATCHLIST*list;
 	int *listArr;
 	int *resultBuf;
@@ -129,7 +135,7 @@ int main( int argc, char** argv)
 				"Usage: %s <world file> <Iterations> <pattern file>\n", argv[0]);
 		exit(1);
 	} 
-	
+
 	iterations = atoi(argv[2]);
 
 	MPI_Init(&argc, &argv);
@@ -156,8 +162,9 @@ int main( int argc, char** argv)
 
 		//Start timer
 		before = wallClockTime();
-	
+
 	}
+
 #ifdef DEBUG
 	printSquareMatrix(patterns[N], patternSize);
 	printSquareMatrix(patterns[E], patternSize);
@@ -166,6 +173,11 @@ int main( int argc, char** argv)
 #endif
 	size = distributeSize(size, numSlaveProcess, rank);
 	patternSize = distributePattern(patterns, patternSize, numSlaveProcess, rank);
+	
+	//if (rank != 0){
+	//	curW = allocateEmptySquareMatrix(row, size + 2);
+	//	nextW = allocateEmptySquareMatrix(row, size + 2);
+	//}
 	
 	list = newList();
 
@@ -176,10 +188,19 @@ int main( int argc, char** argv)
 		printSquareMatrix(curW, size+2);
 #endif
 		if (rank == 0){
+			
 			distributeWork(curW, numSlaveProcess, tag, size, patternSize);
 			gatherWork(resultBuf, tag, numTask, list);
 			//Generate next generation
-			evolveWorld( curW, nextW, size);
+			beforeWork = wallClockTime();
+			
+			tag++;
+			distributeEvo(curW, numSlaveProcess, tag, size);
+			gatherEvo(nextW, tag, numSlaveProcess, size);
+			//evolveWorld( curW, nextW, size);
+			afterWork = wallClockTime();
+			
+			//printf("Work took %1.6f seconds\n", ((float)(afterWork-beforeWork))/1000000000);
 			temp = curW;
 			curW = nextW;
 			nextW = temp;
@@ -191,8 +212,10 @@ int main( int argc, char** argv)
 			recvBuf = allocateEmptySquareMatrix(row, (size + 2));
 			receiveWork(recvBuf, row, size, tag);
 			list = newList();
+
 			//printf("process %d started searching\n", rank);
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
+			
 			//printf("process %d finished searching\n", rank);
 			//Send back
 			rowOffset = (rank-1) * ceil(size / (float)numSlaveProcess);
@@ -213,6 +236,16 @@ int main( int argc, char** argv)
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
+			free(recvBuf);
+			tag++;
+
+			//Evolve world
+			row = ceil(size/ (float)numSlaveProcess) + 2;
+			curW = allocateEmptySquareMatrix(row, size + 2);
+			nextW = allocateEmptySquareMatrix(row, size + 2);
+			receiveWork(curW, row, size, tag);
+			evolveWorld(curW, nextW, row - 2, size);
+			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 
 		}
 		else if (rank == numSlaveProcess){
@@ -245,6 +278,21 @@ int main( int argc, char** argv)
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
+			free(recvBuf);
+			tag++;
+			
+			//Evolve world	
+			if (size%numSlaveProcess == 0){
+				row = size / numSlaveProcess + 2; 
+			}
+			else{
+				row = size - (int)((numSlaveProcess - 1) * (ceil(size/(float)numSlaveProcess))) + 2;
+			}
+			curW = allocateEmptySquareMatrix(row, size + 2);
+			nextW = allocateEmptySquareMatrix(row, size + 2);
+			receiveWork(curW, row, size, tag);
+			evolveWorld(curW, nextW, row - 2, size);
+			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 		}
 		tag++;
 		MPI_Barrier(MPI_COMM_WORLD);
@@ -268,11 +316,13 @@ int main( int argc, char** argv)
 		printList( list );
 		after = wallClockTime();
 		deleteList( list );
-	printf("Printing List took %1.2f seconds\n", ((float)(after-beforePrint))/1000000000);
-	printf("Sequential SETL took %1.2f seconds\n", 
-			((float)(after - before))/1000000000);
-	}
 
+		//printf("Printing List took %1.2f seconds\n", ((float)(after-beforePrint))/1000000000);
+		printf("Parallel SETL took %1.2f seconds\n", 
+				((float)(after - before))/1000000000);
+	}
+	
+	
 	//MPI_Barrier(MPI_COMM_WORLD);
 	//MPI_Finalize();
 
@@ -286,6 +336,50 @@ int main( int argc, char** argv)
 /***********************************************************
   Helper functions 
  ***********************************************************/
+void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
+	int i, numRows = ceil(wSize / (float)numSlaveProcess), rowNum = 1;
+	MPI_Status status;	
+
+	for (i = 1; i < numSlaveProcess; i++){
+		MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+		rowNum += numRows;
+	}
+
+	
+	if (wSize%numSlaveProcess == 0){
+		numRows = wSize / numSlaveProcess; 
+	}
+	else{
+		numRows = wSize - (numSlaveProcess - 1) * ceil(wSize/(float)numSlaveProcess);
+	}
+
+	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+}
+
+
+
+void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){	
+	int i, numRows = ceil(wSize / (float)numSlaveProcess) + 2, rowNum = 0;
+
+	// Distribute to processes 1 to n-1
+	for (i = 1; i < numSlaveProcess; i++){
+		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
+		//printf("send successful to %d: numRows = %d\n", i, numRows * (wSize +2));
+		rowNum += ceil(wSize/(float)numSlaveProcess);
+	}
+
+	// Handle last case of odd number of rows seperately
+	if (wSize %numSlaveProcess == 0){
+		numRows = wSize/numSlaveProcess + 2;
+	}
+	else{
+		numRows = wSize - ((numSlaveProcess - 1) * (ceil(wSize/(float)numSlaveProcess))) + 2 ;
+		//printf("number of rows = %d\n", numRows);
+	}
+	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	//printf("send successful to %d\n", numSlaveProcess);
+}
+
 //Distribute size from rank 0 to others
 int distributeSize(int size, int numSlaveProcess, int rank){
 	int i;
@@ -299,7 +393,7 @@ int distributeSize(int size, int numSlaveProcess, int rank){
 		MPI_Status status;
 		MPI_Recv(&recvSize, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, &status);
 	}
-	
+
 	return recvSize;
 }
 
@@ -308,11 +402,11 @@ int distributePattern(char ***pattern, int patternSize, int numSlaveProcess, int
 	int i;
 	if (rank == 0){
 		for (i = 1; i <= numSlaveProcess; i++){
-		MPI_Send(&patternSize, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-		MPI_Send(&(pattern[0][0][0]), patternSize * patternSize, MPI_CHAR, i, 1, MPI_COMM_WORLD);
-		MPI_Send(&(pattern[1][0][0]), patternSize * patternSize, MPI_CHAR, i, 2, MPI_COMM_WORLD);
-		MPI_Send(&(pattern[2][0][0]), patternSize * patternSize, MPI_CHAR, i, 3, MPI_COMM_WORLD);	
-		MPI_Send(&(pattern[3][0][0]), patternSize * patternSize, MPI_CHAR, i, 4, MPI_COMM_WORLD);
+			MPI_Send(&patternSize, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+			MPI_Send(&(pattern[0][0][0]), patternSize * patternSize, MPI_CHAR, i, 1, MPI_COMM_WORLD);
+			MPI_Send(&(pattern[1][0][0]), patternSize * patternSize, MPI_CHAR, i, 2, MPI_COMM_WORLD);
+			MPI_Send(&(pattern[2][0][0]), patternSize * patternSize, MPI_CHAR, i, 3, MPI_COMM_WORLD);	
+			MPI_Send(&(pattern[3][0][0]), patternSize * patternSize, MPI_CHAR, i, 4, MPI_COMM_WORLD);
 		}	
 	}
 	else{
@@ -326,7 +420,7 @@ int distributePattern(char ***pattern, int patternSize, int numSlaveProcess, int
 		MPI_Recv(&(pattern[2][0][0]), patternSize * patternSize, MPI_CHAR, 0, 3, MPI_COMM_WORLD, &status);	
 		MPI_Recv(&(pattern[3][0][0]), patternSize * patternSize, MPI_CHAR, 0, 4, MPI_COMM_WORLD, &status);
 	}
-	
+
 	return patternSize;
 }
 
@@ -615,12 +709,12 @@ int countNeighbours(char** world, int row, int col)
 
 }
 
-void evolveWorld(char** curWorld, char** nextWorld, int size)
+void evolveWorld(char** curWorld, char** nextWorld, int rowSize, int colSize)
 {
 	int i, j, liveNeighbours;
 
-	for (i = 1; i <= size; i++){
-		for (j = 1; j <= size; j++){
+	for (i = 1; i <= rowSize; i++){
+		for (j = 1; j <= colSize; j++){
 			liveNeighbours = countNeighbours(curWorld, i, j);
 			nextWorld[i][j] = DEAD;
 
