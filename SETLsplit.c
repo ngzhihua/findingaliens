@@ -125,7 +125,7 @@ int main( int argc, char** argv)
 	char **patterns[4];
 	int dir, iterations, iter, rank, numTask, numSlaveProcess, row, tag = 6, rowOffset;
 	int size, patternSize;
-	long long before, after, beforePrint, beforeWork, afterWork;
+	long long before, after, beforePrint;
 	MATCHLIST*list;
 	int *listArr;
 	int *resultBuf;
@@ -174,11 +174,6 @@ int main( int argc, char** argv)
 	size = distributeSize(size, numSlaveProcess, rank);
 	patternSize = distributePattern(patterns, patternSize, numSlaveProcess, rank);
 	
-	//if (rank != 0){
-	//	curW = allocateEmptySquareMatrix(row, size + 2);
-	//	nextW = allocateEmptySquareMatrix(row, size + 2);
-	//}
-	
 	list = newList();
 
 	for (iter = 0; iter < iterations; iter++){
@@ -192,44 +187,27 @@ int main( int argc, char** argv)
 			distributeWork(curW, numSlaveProcess, tag, size, patternSize);
 			gatherWork(resultBuf, tag, numTask, list);
 			//Generate next generation
-			beforeWork = wallClockTime();
-			
 			tag++;
-			distributeEvo(curW, numSlaveProcess, tag, size);
+			// distributeEvo(curW, numSlaveProcess, tag, size);
 			gatherEvo(nextW, tag, numSlaveProcess, size);
-			//evolveWorld( curW, nextW, size);
-			afterWork = wallClockTime();
-			
-			//printf("Work took %1.6f seconds\n", ((float)(afterWork-beforeWork))/1000000000);
+
 			temp = curW;
 			curW = nextW;
 			nextW = temp;
 		}
 		else if (rank > 0 && rank < numSlaveProcess){
 			//recv
-			row = ceil(size / (float)numSlaveProcess) + patternSize + 1;
-			//printf("rank != numSlave %d process row :%d\n", rank, row);
+			row = floor(size / (float)numSlaveProcess) + patternSize + 1;
 			recvBuf = allocateEmptySquareMatrix(row, (size + 2));
 			receiveWork(recvBuf, row, size, tag);
 			list = newList();
 
-			//printf("process %d started searching\n", rank);
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
 			
-			//printf("process %d finished searching\n", rank);
 			//Send back
-			rowOffset = (rank-1) * ceil(size / (float)numSlaveProcess);
+			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			//int i;
-			//printf("buffered items= %d\n", list->nItem);
-			//for (i = 0; i < list->nItem * 4; i++){
-			//	printf("%d ", listArr[i]);
-			//}
-			//printf("process %d returned from converting: %d\n", rank, list->nItem);
-			//if (list->nItem > 0){
-			//printf("listArr[0] = %d\n", listArr[0]);
 			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-			//}
 			if (list != NULL){
 				deleteList(list);
 			}
@@ -240,38 +218,30 @@ int main( int argc, char** argv)
 			tag++;
 
 			//Evolve world
-			row = ceil(size/ (float)numSlaveProcess) + 2;
-			curW = allocateEmptySquareMatrix(row, size + 2);
+			row = floor(size/ (float)numSlaveProcess) + 2;
+			// curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
-			//recv
 			if (size%numSlaveProcess == 0){
 				row = size / numSlaveProcess + 2; 
 			}
 			else{
-				row = size - (numSlaveProcess - 1) * ceil(size/(float)numSlaveProcess) + 2;
+				row = size - (numSlaveProcess - 1) * floor(size/(float)numSlaveProcess) + 2;
 			}
-			//printf("rank == numSlave %d process row : %d\n", rank, row);
 			recvBuf = allocateEmptySquareMatrix(row, (size + 2));
 			receiveWork(recvBuf, row, size, tag);
 			list = newList();
-			//printf("process %d started searching\n", rank);
 			searchPatterns( recvBuf, size, iter, patterns, patternSize, list, row);
-			//printf("process %d finished searching\n", rank);
 			//Send back
-			rowOffset = (rank-1) * ceil(size / (float)numSlaveProcess);
+			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			//printf("process %d returned from converting: %d\n", rank, list->nItem);
-			//if (list->nItem > 0){
 			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-			//	printf("process %d sent to process 0", rank);
-			//}
 			if (list != NULL){
 				deleteList(list);
 			}
@@ -286,20 +256,16 @@ int main( int argc, char** argv)
 				row = size / numSlaveProcess + 2; 
 			}
 			else{
-				row = size - (int)((numSlaveProcess - 1) * (ceil(size/(float)numSlaveProcess))) + 2;
+				row = size - (int)((numSlaveProcess - 1) * (floor(size/(float)numSlaveProcess))) + 2;
 			}
-			curW = allocateEmptySquareMatrix(row, size + 2);
+			// curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 		}
 		tag++;
-		MPI_Barrier(MPI_COMM_WORLD);
 	}
-
-
-
 
 	freeSquareMatrix( patterns[0] );
 	freeSquareMatrix( patterns[1] );
@@ -321,13 +287,6 @@ int main( int argc, char** argv)
 		printf("Parallel SETL took %1.2f seconds\n", 
 				((float)(after - before))/1000000000);
 	}
-	
-	
-	//MPI_Barrier(MPI_COMM_WORLD);
-	//MPI_Finalize();
-
-
-	//Clean up
 
 	return 0;
 
@@ -337,7 +296,7 @@ int main( int argc, char** argv)
   Helper functions 
  ***********************************************************/
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
-	int i, numRows = ceil(wSize / (float)numSlaveProcess), rowNum = 1;
+	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
 	MPI_Status status;	
 
 	for (i = 1; i < numSlaveProcess; i++){
@@ -350,7 +309,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 		numRows = wSize / numSlaveProcess; 
 	}
 	else{
-		numRows = wSize - (numSlaveProcess - 1) * ceil(wSize/(float)numSlaveProcess);
+		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
 	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
@@ -359,13 +318,12 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 
 
 void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){	
-	int i, numRows = ceil(wSize / (float)numSlaveProcess) + 2, rowNum = 0;
+	int i, numRows = floor(wSize / (float)numSlaveProcess) + 2, rowNum = 0;
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
 		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
-		//printf("send successful to %d: numRows = %d\n", i, numRows * (wSize +2));
-		rowNum += ceil(wSize/(float)numSlaveProcess);
+		rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
 	// Handle last case of odd number of rows seperately
@@ -373,17 +331,16 @@ void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){
 		numRows = wSize/numSlaveProcess + 2;
 	}
 	else{
-		numRows = wSize - ((numSlaveProcess - 1) * (ceil(wSize/(float)numSlaveProcess))) + 2 ;
-		//printf("number of rows = %d\n", numRows);
+		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
 	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
-	//printf("send successful to %d\n", numSlaveProcess);
 }
 
 //Distribute size from rank 0 to others
 int distributeSize(int size, int numSlaveProcess, int rank){
 	int i;
 	int recvSize = size;
+
 	if (rank == 0){
 		for (i = 1; i<= numSlaveProcess; i++){
 			MPI_Send(&size, 1, MPI_INT, i, 5, MPI_COMM_WORLD);
@@ -430,11 +387,7 @@ void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 	MPI_Status status;
 	MATCHLIST *lists[4];
 	MATCH *temp;
-	//MATCHLIST *list0 = newList();
-	//MATCHLIST *list1 = newList();
-	//MATCHLIST *list2 = newList();
-	//MATCHLIST *list3 = newList();
-	//MATCH* curr;
+
 	for (i=0; i < 4; i++){
 		lists[i] = newList();
 	}	
@@ -446,32 +399,15 @@ void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 		if (recvSize > 0){
 			recvBuf = (int *)malloc(sizeof(int) * recvSize);
 			MPI_Recv(&(recvBuf[0]), recvSize, MPI_INT, i, tag, MPI_COMM_WORLD, &status);
-			//printf("result received from %d with status %d and count %d and source %d and tag %d\n", i, status.MPI_ERROR, recvSize, status.MPI_SOURCE, status.MPI_TAG);
 
 			for (j = 0; j < recvSize ; j += 4){
-				//printf("receiveBuffer: %d:%d:%d:%d\n", recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
-				//if ( recvBuf[j+3] == 0){
 				arrIndex= recvBuf[j+3];
 				insertEnd(lists[arrIndex], recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
-				//}	
-				//else if ( recvBuf[j+3] == 1){
-				//	insertEnd(list1, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
-				//}	
-				//else if ( recvBuf[j+3] == 2){
-				//	insertEnd(list2, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
-				//}
-				//else if ( recvBuf[j+3] == 3){
-				//	insertEnd(list3, recvBuf[j], recvBuf[j+1], recvBuf[j+2], recvBuf[j+3]);
-				//}
-				//insertEnd(list, recvBuf[j*4], recvBuf[j*4+1], recvBuf[j*4 +2], recvBuf[j*4+3]);
-				//printf("after insertEnd\n");
 			}
-			//printf("result from %d processed\n", i);
-			//free(recvBuf)
 		}
 	}
 
-	//list->tail = list0->tail;
+	// Counting sort the lists by iterations
 	for (i = 0; i < 4; i++){
 		if (lists[i]->nItem > 0){
 			if (list->nItem > 0){
@@ -489,7 +425,6 @@ void gatherWork(int *recvBuf, int tag, int numTask, MATCHLIST* list){
 		list->nItem += lists[i]->nItem;
 	}
 
-	//list->nItem += list0->nItem + list1->nItem + list2->nItem + list3->nItem;
 }
 
 int* convertMatchListToArr(MATCHLIST* list, int rowOffset){
@@ -500,14 +435,12 @@ int* convertMatchListToArr(MATCHLIST* list, int rowOffset){
 		curr = list->tail->next;
 	}
 	arr = malloc(list->nItem * 4 * sizeof(int));
-	//printList(list);
 	for ( i= 0 ; i < list->nItem; i++){
 		(arr[i*4]) = curr->iteration;
 		(arr[i*4+1]) = curr-> row + rowOffset;
 		(arr[i*4+2]) = curr-> col;
 		(arr[i*4+3]) = curr-> rotation;
 		curr = curr->next;
-		//printf("%d %d %d %d\n", arr[i*4], arr[i*4+1], arr[i*4+2], arr[i*4+3]);
 	}
 	return arr;
 }
@@ -516,28 +449,15 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 	MPI_Status status;
 
 	MPI_Recv(&(recvBuf[0][0]), numRows * (wSize +2), MPI_CHAR, 0, tag, MPI_COMM_WORLD, &status);
-
-	//	printf("count is %d. error is %d.\n", status.count, status.MPI_ERROR);
-
-	//int i, j;
-
-	//for (i = 0; i < numRows; i++){
-	//	for (j = 0; j < wSize + 2; j++){
-	//		printf("%c", recvBuf[i][j]);
-	//	}
-	//	printf("\n");
-	//}
-
 }
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
-	int i, numRows = ceil(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
+	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
 		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
-		//printf("send successful to %d: numRows = %d\n", i, numRows * (wSize +2));
-		rowNum += ceil(wSize/(float)numSlaveProcess);
+		rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
 	// Handle last case of odd number of rows seperately
@@ -545,16 +465,11 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 		numRows = wSize/numSlaveProcess + 2;
 	}
 	else{
-		numRows = wSize - ((numSlaveProcess - 1) * (ceil(wSize/(float)numSlaveProcess))) + 2 ;
-		//printf("number of rows = %d\n", numRows);
+		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
 	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
-	//printf("send successful to %d\n", numSlaveProcess);
 	tag++;
 }
-
-//void init(int* argc, char** argv, int* numTask, int* rank){
-//}
 
 void die(int lineNo)
 {
@@ -899,4 +814,3 @@ void printList(MATCHLIST* list)
 				cur->iteration, cur->row, cur->col, cur->rotation);
 	}
 }
-
