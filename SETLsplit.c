@@ -303,7 +303,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 	MPI_Request req;
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status, &req);
+		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
 		// rowNum += numRows;
 	}
 
