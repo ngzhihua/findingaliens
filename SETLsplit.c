@@ -302,10 +302,11 @@ int main( int argc, char** argv)
  ***********************************************************/
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
-	MPI_Status status;	
+	MPI_Status status[numSlaveProcess];	
+	MPI_Request reqs[numSlaveProcess];
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+		MPI_Irecv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &reqs[i-1]);
 		rowNum += numRows;
 	}
 
@@ -317,7 +318,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_iRecv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess -1]);
 }
 
 
@@ -475,7 +476,7 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	}
 	MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess -1]);
 	tag++;
-	MPI_Waitall(numSlaveProcess, reqs, status);
+	// MPI_Waitall(numSlaveProcess, reqs, status);
 }
 
 void die(int lineNo)
