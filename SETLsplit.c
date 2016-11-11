@@ -188,7 +188,7 @@ int main( int argc, char** argv)
 			gatherWork(resultBuf, tag, numTask, list);
 			//Generate next generation
 			tag++;
-			distributeEvo(curW, numSlaveProcess, tag, size);
+			// distributeEvo(curW, numSlaveProcess, tag, size);
 			gatherEvo(nextW, tag, numSlaveProcess, size);
 
 			temp = curW;
@@ -214,17 +214,17 @@ int main( int argc, char** argv)
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
-			free(recvBuf);
+			// free(recvBuf);
 			tag++;
 
 			//Evolve world
 			row = floor(size/ (float)numSlaveProcess) + 2;
-			curW = allocateEmptySquareMatrix(row, size + 2);
+			// curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-
+			free(recvBuf);
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
@@ -248,7 +248,7 @@ int main( int argc, char** argv)
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
-			free(recvBuf);
+			// free(recvBuf);
 			tag++;
 			
 			//Evolve world	
@@ -258,11 +258,12 @@ int main( int argc, char** argv)
 			else{
 				row = size - (int)((numSlaveProcess - 1) * (floor(size/(float)numSlaveProcess))) + 2;
 			}
-			curW = allocateEmptySquareMatrix(row, size + 2);
+			// curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
+			free(recvBuf);
 		}
 		tag++;
 	}
