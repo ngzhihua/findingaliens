@@ -129,6 +129,8 @@ int main( int argc, char** argv)
 	MATCHLIST*list;
 	int *listArr;
 	int *resultBuf;
+	MPI_Request request;
+	MPI_Status status;
 
 	if (argc < 4 ){
 		fprintf(stderr, 
@@ -188,7 +190,7 @@ int main( int argc, char** argv)
 			gatherWork(resultBuf, tag, numTask, list);
 			//Generate next generation
 			tag++;
-			distributeEvo(curW, numSlaveProcess, tag, size);
+			// distributeEvo(curW, numSlaveProcess, tag, size);
 			gatherEvo(nextW, tag, numSlaveProcess, size);
 
 			temp = curW;
@@ -207,24 +209,25 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &request);
+			// free(recvBuf);
+			tag++;
+
+			//Evolve world
+			row = floor(size/ (float)numSlaveProcess) + 2;
+			// curW = allocateEmptySquareMatrix(row, size + 2);
+			nextW = allocateEmptySquareMatrix(row, size + 2);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
+			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
+			MPI_Wait(&request, &status);
+			free(recvBuf);
 			if (list != NULL){
 				deleteList(list);
 			}
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
-			free(recvBuf);
-			tag++;
-
-			//Evolve world
-			row = floor(size/ (float)numSlaveProcess) + 2;
-			curW = allocateEmptySquareMatrix(row, size + 2);
-			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
-			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
@@ -241,14 +244,8 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
-			free(recvBuf);
+			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &request);
+			// free(recvBuf);
 			tag++;
 			
 			//Evolve world	
@@ -258,11 +255,19 @@ int main( int argc, char** argv)
 			else{
 				row = size - (int)((numSlaveProcess - 1) * (floor(size/(float)numSlaveProcess))) + 2;
 			}
-			curW = allocateEmptySquareMatrix(row, size + 2);
+			// curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			receiveWork(curW, row, size, tag);
-			evolveWorld(curW, nextW, row - 2, size);
+			// receiveWork(curW, row, size, tag);
+			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
+			MPI_Wait(&request, &status);
+			free(recvBuf);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		tag++;
 	}
