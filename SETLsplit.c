@@ -300,10 +300,11 @@ int main( int argc, char** argv)
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
 	MPI_Status status;	
+	MPI_Request req;
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
-		rowNum += numRows;
+		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status, &req);
+		// rowNum += numRows;
 	}
 
 	
@@ -314,7 +315,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum + (numSlaveProcess -2) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -455,11 +456,12 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
+	MPI_Request req;
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
-		rowNum += floor(wSize/(float)numSlaveProcess);
+		MPI_Isend(&(currW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
+		// rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
 	// Handle last case of odd number of rows seperately
@@ -469,7 +471,7 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	else{
 		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum + (numSlaveProcess -2) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
