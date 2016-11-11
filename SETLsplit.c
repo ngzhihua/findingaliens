@@ -208,13 +208,7 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_ISend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
+			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
 			// free(recvBuf);
 			tag++;
 
@@ -226,6 +220,12 @@ int main( int argc, char** argv)
 			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			free(recvBuf);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
@@ -242,13 +242,7 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_ISend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
+			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
 			// free(recvBuf);
 			tag++;
 			
@@ -265,6 +259,12 @@ int main( int argc, char** argv)
 			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			free(recvBuf);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		tag++;
 	}
@@ -299,22 +299,24 @@ int main( int argc, char** argv)
  ***********************************************************/
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
+	int rowOffset;
 	MPI_Status status;	
+	MPI_Request req;
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
-		rowNum += numRows;
+		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
+		// rowNum += numRows;
 	}
 
 	
 	if (wSize%numSlaveProcess == 0){
-		numRows = wSize / numSlaveProcess; 
+		rowOffset = wSize / numSlaveProcess; 
 	}
 	else{
-		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
+		rowOffset = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum + (numSlaveProcess - 1) * numRows][0]), rowOffset * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -456,20 +458,23 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
 
+	int rowOffset;
+	MPI_Request req;
+
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
-		rowNum += floor(wSize/(float)numSlaveProcess);
+		MPI_Isend(&(currW[rowNum + (i-1) * (int)floor(wSize/(float)numSlaveProcess)][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
+		// rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
 	// Handle last case of odd number of rows seperately
 	if (wSize %numSlaveProcess == 0){
-		numRows = wSize/numSlaveProcess + 2;
+		rowOffset = wSize/numSlaveProcess + 2;
 	}
 	else{
-		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
+		rowOffset = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum + (numSlaveProcess -1) * (int)floor(wSize/(float)numSlaveProcess)][0]), rowOffset * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
