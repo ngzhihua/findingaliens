@@ -129,7 +129,6 @@ int main( int argc, char** argv)
 	MATCHLIST*list;
 	int *listArr;
 	int *resultBuf;
-	MPI_Request iSendReq;
 
 	if (argc < 4 ){
 		fprintf(stderr, 
@@ -189,7 +188,7 @@ int main( int argc, char** argv)
 			gatherWork(resultBuf, tag, numTask, list);
 			//Generate next generation
 			tag++;
-			// distributeEvo(curW, numSlaveProcess, tag, size);
+			distributeEvo(curW, numSlaveProcess, tag, size);
 			gatherEvo(nextW, tag, numSlaveProcess, size);
 
 			temp = curW;
@@ -208,24 +207,24 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			// free(recvBuf);
-			tag++;
-
-			//Evolve world
-			row = floor(size/ (float)numSlaveProcess) + 2;
-			// curW = allocateEmptySquareMatrix(row, size + 2);
-			nextW = allocateEmptySquareMatrix(row, size + 2);
-			// receiveWork(curW, row, size, tag);
-			evolveWorld(recvBuf, nextW, row - 2, size);
-			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-			free(recvBuf);
+			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
 			if (list != NULL){
 				deleteList(list);
 			}
 			if (listArr != NULL || sizeof(listArr) == 0){
 				free(listArr);
 			}
+			free(recvBuf);
+			tag++;
+
+			//Evolve world
+			row = floor(size/ (float)numSlaveProcess) + 2;
+			curW = allocateEmptySquareMatrix(row, size + 2);
+			nextW = allocateEmptySquareMatrix(row, size + 2);
+			receiveWork(curW, row, size, tag);
+			evolveWorld(curW, nextW, row - 2, size);
+			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
+
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
@@ -242,8 +241,14 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			// free(recvBuf);
+			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
+			free(recvBuf);
 			tag++;
 			
 			//Evolve world	
@@ -253,18 +258,11 @@ int main( int argc, char** argv)
 			else{
 				row = size - (int)((numSlaveProcess - 1) * (floor(size/(float)numSlaveProcess))) + 2;
 			}
-			// curW = allocateEmptySquareMatrix(row, size + 2);
+			curW = allocateEmptySquareMatrix(row, size + 2);
 			nextW = allocateEmptySquareMatrix(row, size + 2);
-			// receiveWork(curW, row, size, tag);
-			evolveWorld(recvBuf, nextW, row - 2, size);
+			receiveWork(curW, row, size, tag);
+			evolveWorld(curW, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-			free(recvBuf);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
 		}
 		tag++;
 	}
@@ -299,24 +297,22 @@ int main( int argc, char** argv)
  ***********************************************************/
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
-	int rowOffset;
 	MPI_Status status;	
-	MPI_Request req;
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
-		// rowNum += numRows;
+		MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+		rowNum += numRows;
 	}
 
 	
 	if (wSize%numSlaveProcess == 0){
-		rowOffset = wSize / numSlaveProcess; 
+		numRows = wSize / numSlaveProcess; 
 	}
 	else{
-		rowOffset = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
+		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum + (numSlaveProcess - 1) * numRows][0]), rowOffset * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -458,23 +454,20 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
 
-	int rowOffset;
-	MPI_Request req;
-
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Isend(&(currW[rowNum + (i-1) * (int)floor(wSize/(float)numSlaveProcess)][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
-		// rowNum += floor(wSize/(float)numSlaveProcess);
+		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
+		rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
 	// Handle last case of odd number of rows seperately
 	if (wSize %numSlaveProcess == 0){
-		rowOffset = wSize/numSlaveProcess + 2;
+		numRows = wSize/numSlaveProcess + 2;
 	}
 	else{
-		rowOffset = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
+		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum + (numSlaveProcess -1) * (int)floor(wSize/(float)numSlaveProcess)][0]), rowOffset * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
