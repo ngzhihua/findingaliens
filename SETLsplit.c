@@ -129,6 +129,7 @@ int main( int argc, char** argv)
 	MATCHLIST*list;
 	int *listArr;
 	int *resultBuf;
+	MPI_Request iSendReq;
 
 	if (argc < 4 ){
 		fprintf(stderr, 
@@ -207,7 +208,7 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			MPI_ISend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
 			if (list != NULL){
 				deleteList(list);
 			}
@@ -241,7 +242,7 @@ int main( int argc, char** argv)
 			//Send back
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
-			MPI_Send(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD);
+			MPI_ISend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
 			if (list != NULL){
 				deleteList(list);
 			}
