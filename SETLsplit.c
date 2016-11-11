@@ -299,6 +299,7 @@ int main( int argc, char** argv)
  ***********************************************************/
 void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess), rowNum = 1;
+	int rowOffset;
 	MPI_Status status;	
 	MPI_Request req;
 
@@ -309,13 +310,13 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 
 	
 	if (wSize%numSlaveProcess == 0){
-		numRows = wSize / numSlaveProcess; 
+		rowOffset = wSize / numSlaveProcess; 
 	}
 	else{
-		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
+		rowOffset = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum + (numSlaveProcess -1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum + (numSlaveProcess - 2) * numRows][0]), rowOffset * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -456,6 +457,7 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
+	int rowOffset;
 	MPI_Request req;
 
 	// Distribute to processes 1 to n-1
@@ -466,12 +468,12 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 
 	// Handle last case of odd number of rows seperately
 	if (wSize %numSlaveProcess == 0){
-		numRows = wSize/numSlaveProcess + 2;
+		rowOffset = wSize/numSlaveProcess + 2;
 	}
 	else{
-		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
+		rowOffset = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum + (numSlaveProcess -1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum + (numSlaveProcess -2) * numRows][0]), rowOffset * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
