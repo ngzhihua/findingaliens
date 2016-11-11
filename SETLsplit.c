@@ -458,10 +458,11 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
-
+	MPI_Request reqs[numSlaveProcess];
+	MPI_Status status[numSlaveProcess];
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
+		MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &reqs[i-1]);
 		rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
@@ -472,8 +473,9 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	else{
 		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess -1]);
 	tag++;
+	MPI_Waitall(numSlaveProcess, reqs, status);
 }
 
 void die(int lineNo)
