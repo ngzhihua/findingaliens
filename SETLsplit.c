@@ -209,12 +209,6 @@ int main( int argc, char** argv)
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
 			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
 			// free(recvBuf);
 			tag++;
 
@@ -226,6 +220,12 @@ int main( int argc, char** argv)
 			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			free(recvBuf);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		else if (rank == numSlaveProcess){
 			//Last process handling is special due to odd sizes
@@ -243,12 +243,6 @@ int main( int argc, char** argv)
 			rowOffset = (rank-1) * floor(size / (float)numSlaveProcess);
 			listArr = convertMatchListToArr(list, rowOffset);
 			MPI_Isend(&(listArr[0]), list->nItem *4, MPI_INT, 0, tag, MPI_COMM_WORLD, &iSendReq);
-			if (list != NULL){
-				deleteList(list);
-			}
-			if (listArr != NULL || sizeof(listArr) == 0){
-				free(listArr);
-			}
 			// free(recvBuf);
 			tag++;
 			
@@ -265,6 +259,12 @@ int main( int argc, char** argv)
 			evolveWorld(recvBuf, nextW, row - 2, size);
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			free(recvBuf);
+			if (list != NULL){
+				deleteList(list);
+			}
+			if (listArr != NULL || sizeof(listArr) == 0){
+				free(listArr);
+			}
 		}
 		tag++;
 	}
