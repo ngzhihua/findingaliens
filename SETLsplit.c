@@ -315,7 +315,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 		numRows = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum + (numSlaveProcess -2) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum + (numSlaveProcess -1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -471,7 +471,7 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	else{
 		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum + (numSlaveProcess -2) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum + (numSlaveProcess -1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
