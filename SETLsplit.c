@@ -319,6 +319,8 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 	}
 
 	MPI_Irecv(&(nextW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess -1]);
+
+	MPI_Waitall(numSlaveProcess, reqs, status);
 }
 
 
