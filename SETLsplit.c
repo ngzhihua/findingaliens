@@ -304,7 +304,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 	MPI_Request req;
 
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Irecv(&(nextW[rowNum + (i-1) * floor(wSize/(float)numSlaveProcess)][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
+		MPI_Irecv(&(nextW[rowNum + (i-1) * numRows][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
 		// rowNum += numRows;
 	}
 
@@ -316,7 +316,7 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 		rowOffset = wSize - (numSlaveProcess - 1) * floor(wSize/(float)numSlaveProcess);
 	}
 
-	MPI_Recv(&(nextW[rowNum + (numSlaveProcess - 2) * floor(wSize/(float)numSlaveProcess)][0]), rowOffset * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
+	MPI_Recv(&(nextW[rowNum + (numSlaveProcess - 2) * numRows][0]), rowOffset * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &status);
 }
 
 
@@ -457,12 +457,13 @@ void receiveWork(char **recvBuf, int numRows, int wSize, int tag){
 
 void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int pSize){
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + pSize + 1, rowNum = 0;
+
 	int rowOffset;
 	MPI_Request req;
 
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Isend(&(currW[rowNum + (i-1) * floor(wSize/(float)numSlaveProcess)][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
+		MPI_Isend(&(currW[rowNum + (i-1) * (int)floor(wSize/(float)numSlaveProcess)][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &req);
 		// rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
@@ -473,7 +474,7 @@ void distributeWork(char ** currW, int numSlaveProcess, int tag, int wSize, int 
 	else{
 		rowOffset = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum + (numSlaveProcess -2) * floor(wSize/(float)numSlaveProcess)][0]), rowOffset * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Send(&(currW[rowNum + (numSlaveProcess -2) * (int)floor(wSize/(float)numSlaveProcess)][0]), rowOffset * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
 	tag++;
 }
 
