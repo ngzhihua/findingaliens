@@ -327,10 +327,11 @@ void gatherEvo(char **nextW, int tag, int numSlaveProcess, int wSize){
 
 void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){	
 	int i, numRows = floor(wSize / (float)numSlaveProcess) + 2, rowNum = 0;
-
+	MPI_Status status[numSlaveProcess];	
+	MPI_Request reqs[numSlaveProcess];
 	// Distribute to processes 1 to n-1
 	for (i = 1; i < numSlaveProcess; i++){
-		MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD);
+		MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, i, tag, MPI_COMM_WORLD, &reqs[i-1]);
 		rowNum += floor(wSize/(float)numSlaveProcess);
 	}
 
@@ -341,7 +342,9 @@ void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){
 	else{
 		numRows = wSize - ((numSlaveProcess - 1) * (floor(wSize/(float)numSlaveProcess))) + 2 ;
 	}
-	MPI_Send(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD);
+	MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess - 1]);
+
+	MPI_Waitall(numSlaveProcess, &status, &reqs);
 }
 
 //Distribute size from rank 0 to others
