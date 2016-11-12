@@ -344,7 +344,7 @@ void distributeEvo(char **currW, int numSlaveProcess, int tag, int wSize){
 	}
 	MPI_Isend(&(currW[rowNum][0]), numRows * (wSize + 2), MPI_CHAR, numSlaveProcess, tag, MPI_COMM_WORLD, &reqs[numSlaveProcess - 1]);
 
-	MPI_Waitall(numSlaveProcess, &reqs, &status);
+	MPI_Waitall(numSlaveProcess, reqs, status);
 }
 
 //Distribute size from rank 0 to others
