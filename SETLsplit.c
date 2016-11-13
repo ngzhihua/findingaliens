@@ -222,6 +222,7 @@ int main( int argc, char** argv)
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			MPI_Wait(&request, &status);
 			free(recvBuf);
+			free(nextW);
 			if (list != NULL){
 				deleteList(list);
 			}
@@ -262,6 +263,7 @@ int main( int argc, char** argv)
 			MPI_Send(&(nextW[1][0]), (row-2) * (size + 2), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
 			MPI_Wait(&request, &status);
 			free(recvBuf);
+			free(nextW);
 			if (list != NULL){
 				deleteList(list);
 			}
