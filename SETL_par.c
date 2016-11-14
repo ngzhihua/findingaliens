@@ -145,19 +145,12 @@ int main( int argc, char** argv)
 		curW = readWorldFromFile(argv[1], &size);
 		nextW = allocateSquareMatrix(size+2, DEAD);
 
-
-		printf("World Size = %d\n", size);
-
-		printf("Iterations = %d\n", iterations);
-
 		// Distribute pattern
 		patterns[N] = readPatternFromFile(argv[3], &patternSize);
 		for (dir = E; dir <= W; dir++){
 			patterns[dir] = allocateSquareMatrix(patternSize, DEAD);
 			rotate90(patterns[dir-1], patterns[dir], patternSize);
 		}
-		printf("Pattern size = %d\n", patternSize);
-
 
 		//Start timer
 		before = wallClockTime();
@@ -780,9 +773,6 @@ void printList(MATCHLIST* list)
 {
 	int i;
 	MATCH* cur;
-
-	printf("List size = %d\n", list->nItem);    
-
 
 	if (list->nItem == 0) return;
 
